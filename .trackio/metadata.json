@@ -15,25 +15,5 @@
   "title": "Repro - Priority-Aware Shapley Value",
   "last_page": "conclusion",
   "local_dashboards": {},
-  "artifacts_bucket": "DineshAI/uG4IOdaAGk-artifacts",
-  "local_path_artifacts": [
-    {
-      "path": "outputs/c2_reductions_axioms.csv",
-      "abs_path": "/home/dineshai/Drives/Code/AllCode/ReproduceICML/papers/icml26-repro-uG4IOdaAGk-priority-aware-shapley/outputs/c2_reductions_axioms.csv",
-      "size": 373,
-      "artifact_type": "dataset"
-    },
-    {
-      "path": "outputs/c1_definition.csv",
-      "abs_path": "/home/dineshai/Drives/Code/AllCode/ReproduceICML/papers/icml26-repro-uG4IOdaAGk-priority-aware-shapley/outputs/c1_definition.csv",
-      "size": 318,
-      "artifact_type": "dataset"
-    },
-    {
-      "path": "outputs/c3_mcmc.csv",
-      "abs_path": "/home/dineshai/Drives/Code/AllCode/ReproduceICML/papers/icml26-repro-uG4IOdaAGk-priority-aware-shapley/outputs/c3_mcmc.csv",
-      "size": 316,
-      "artifact_type": "dataset"
-    }
-  ]
+  "artifacts_bucket": "DineshAI/uG4IOdaAGk-artifacts"
 }
