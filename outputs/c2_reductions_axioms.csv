@@ -1,0 +1,9 @@
+poset,test,err
+chain-4,Prop3.1 const-λ==PSV,0.0
+V-poset-4,Prop3.1 const-λ==PSV,0.0
+2-level-5,Prop3.1 const-λ==PSV,0.0
+ord-partition-B1B2,Prop3.1 const-λ==PSV,0.0
+ord-partition-B1B2,Prop3.2 ordered-part==WSV,0.0
+ord-partition-3blocks,Prop3.1 const-λ==PSV,0.0
+ord-partition-3blocks,Prop3.2 ordered-part==WSV,0.0
+(empty),const-λ no-precedence==classical SV,0.0

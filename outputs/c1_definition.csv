@@ -1,0 +1,6 @@
+poset,mass_on_LEs,tv_change_under_3x_lambda,precedence_enforced,weights_active
+chain-4,1.0,0.0,True,True
+V-poset-4,1.0,0.38095238095238093,True,True
+2-level-5,1.0000000000000002,0.4281666993720566,True,True
+ord-partition-B1B2,1.0,0.380952380952381,True,True
+ord-partition-3blocks,1.0,0.380952380952381,True,True

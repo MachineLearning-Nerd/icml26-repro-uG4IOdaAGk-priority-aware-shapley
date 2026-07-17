@@ -1,0 +1,4891 @@
+Priority-Aware Shapley Value
+
+Kiljae Lee 1 Ziqi Liu 2 Weijing Tang 2 Yuan Zhang 1
+
+arXiv:2602.09326v2 [cs.LG] 14 Jun 2026
+
+Abstract
+Shapley values are widely used for modelagnostic data valuation and feature attribution,
+yet they implicitly assume contributors are interchangeable. This can be problematic when contributors are dependent (e.g., reused/augmented
+data or causal feature orderings) or when contributions should be adjusted by factors such as trust or
+risk. We propose Priority-Aware Shapley Value
+(PASV), which incorporates both hard precedence
+constraints and soft, contributor-specific priority
+weights. PASV is applicable to general precedence structures, recovers precedence-only and
+weight-only Shapley variants as special cases,
+and is uniquely characterized by natural axioms.
+We develop an efficient adjacent-swap Metropolis–Hastings sampler for scalable Monte Carlo
+estimation and analyze limiting regimes induced
+by extreme priority weights. Experiments on data
+valuation (MNIST/CIFAR10) and feature attribution (Census Income) demonstrate more structurefaithful allocations and a practical sensitivity analysis via our proposed “priority sweeping”.
+
+1
+
+2
+
+3
+
+4
+
+(a) No priority
+
+1
+
+2
+
+3
+
+4
+
+(b) Hard priority
+
+1
+
+2
+
+3
+
+4
+
+(c) Soft priority
+
+1
+
+2
+
+3
+
+4
+
+(d) Proposed work
+
+Figure 1. Illustration of priority structures. Dashed arrows in (c):
+existing works on (c) require special precedence structures.
+
+players as interchangeable.
+However, in many modern machine learning applications,
+this exchangeability is questionable for two distinct reasons. First, players can exhibit precedence relations in
+between. For example, training data may be augmented,
+copied, or otherwise reused, so a downstream contribution
+can be largely derivative of an upstream source (Aas et al.,
+2021); likewise, domain or causal knowledge can impose
+that some features precede others, making certain orders
+scientifically meaningless (Frye et al., 2021; Janzing et al.,
+2020). Recent work further highlights that Shapley-type
+payoff methods can face copier attack. This has inspired
+replication-robust formulations (Han et al., 2022; Falconer
+et al., 2025) and group-based approaches (Lee et al., 2025)
+designed to mitigate such manipulations, reinforcing the
+need to explicitly incorporate precedence into valuation.
+Second, practitioners often have trust/risk considerations,
+e.g., some data points may be less trusted for their independence, more costly to curate, or carry higher legal/compliance risk (Wu et al., 2023; Wang & Jia, 2023). Therefore,
+attribution should reflect two types of priority: (i) hard
+priority that rules out orders violating known precedence,
+and (ii) soft priority that adjusts the attribution computation
+between players under the hard priority infrastructure.
+
+1. Introduction
+Recent advances in machine learning have fueled growing
+interest in data-centric AI and explainable AI, where a central goal is to quantify how much each training example
+(data valuation) or each input variable (feature attribution)
+contributes to a model’s performance or predictions (Zha
+et al., 2025; Mersha et al., 2024). Shapley-type values are a
+standard tool for model-agnostic attribution (Shapley, 1953;
+Ghorbani & Zou, 2019; Lundberg & Lee, 2017; Kwon &
+Zou, 2021; Wang & Jia, 2023). A key axiomatization choice
+behind the Shapley value is that it averages marginal contributions over all player permutations, implicitly treating
+
+Existing Shapley variants typically address these two aspects in isolation. Precedence-based methods restrict attention to precedence-feasible orders (Faigle & Kern, 1992),
+while weight-based methods bias the ordering distribution
+via player-specific weights, but exclusively for special precedence structures (Kalai & Samet, 1987; Nowak & Radzik,
+1995). Recent machine learning adaptations apply these
+ideas to data valuation and feature attribution (Zheng et al.,
+2025; Frye et al., 2020), but commonly rely on coarse precedence specifications that are easy to handle computationally
+without offering a unified mechanism to combine general
+precedence constraints with individual priorities.
+
+1
+Department of Statistics, The Ohio State University, OH,
+USA 2 Department of Statistics and Data Science, Carnegie
+Mellon University, PA, USA. Correspondence to: Yuan Zhang
+<yzhanghf@stat.osu.edu>.
+
+Proceedings of the 43 rd International Conference on Machine
+Learning, Seoul, South Korea. PMLR 306, 2026. Copyright 2026
+by the author(s).
+
+1
+
+Priority-Aware Shapley Value
+
+To this end, we propose the Priority-Aware Shapley Value
+(PASV), a single Shapley-type attribution method that simultaneously captures (i) hard precedence constraints among
+players, and (ii) soft player-specific priority weights (Figure 1). PASV computes each player’s value by averaging
+its marginal contribution over precedence-feasible orders,
+while biasing the order distribution according to the specified priorities. This unified view is designed to be both
+expressive (supporting general precedence constraints) and
+practically feasible (supporting scalable computation for
+large player sets).
+
+The Shapley value has a very intuitive alternative version,
+which this paper builds upon. Imagine that the n players
+join the game in some order π ∈ Π, where Π is the set of all
+permutations of [n]. Let π i be the set of players that arrived
+earlier than i. Define the random order value (ROV) as
+
+
+ψi (U ) = Eπ∼p U (π i ∪ {i}) − U (π i ) ,
+(1)
+
+Our main contributions are:
+
+2.2. Hard Priority: Partial Order, Directed Acyclic
+Graph and Linear Extension
+
+where p is a distribution on Π. Going forward, we will
+represent each method we review or propose in terms of
+their p without repeating (1) (they only differ in their p’s).
+
+• Unified formulation. We introduce PASV, a Shapleytype value that simultaneously incorporates general
+precedence constraints and soft priority weights within
+one coherent random-order framework.
+
+The Shapley value ψiSV (U ) is the special case p =
+Uniform(Π). In presence of priority, we must use a different distribution p that respects the priority relationships.
+Definition 2.1 (Partial order set (poset)). A binary relation
+⪯ is a partial order if it is reflexive (i ⪯ i), antisymmetric
+(i ⪯ j and j ⪯ i imply i = j), and transitive (i ⪯ j and
+j ⪯ k imply i ⪯ k). The pair ([n], ⪯) is called a Partially
+Ordered Set (poset). Write i ≺ j if i ⪯ j and i ̸= j. 1
+
+• Theory and interpretability. We provide an axiomatic
+characterization that singles out PASV as a canonical
+precedence-respecting, weight-aware rule, and we analyze limiting regimes that clarify how extreme priorities can modify the underlying precedence structure.
+
+A convenient way to represent ([n], ⪯) is via a Directed
+Acyclic Graph (DAG). Formally, a DAG is a graph on the
+node set [n] with directed edges, such that for any (i, j) pair,
+i ≺ j if and only if there exists a directed path on the DAG
+from i to j. Throughout the paper, we use the equivalent
+concepts poset and DAG interchangeably for expediency.
+
+• Scalable computation. We develop an efficient
+MCMC-based estimator for sampling precedencefeasible orders under non-uniform weighting, enabling
+Monte Carlo estimation under general precedence.
+• Practical diagnostic via priority sweeping. Beyond producing a single allocation, PASV provides
+an actionable priority-sweeping stress test: by varying
+one player (or group)’s weight while keeping others’
+weights and the precedence graph fixed, practitioners
+can quantify the sensitivity to trust/risk considerations,
+flag contributors whose credit is unstable and may significantly impact the result, and support more robust
+valuation/attribution decisions.
+
+The poset/DAG determines which permutation π’s are valid.
+Definition 2.2 (Linear extension (LE)). A permutation π ∈
+Π is a linear extension (LE) of the poset ([n], ⪯) if i ≺ j
+implies that i appears before j in π. Let Π⪯ denote the set
+of all linear extensions on [n].
+Precedence Shapley Value (PSV) (Faigle & Kern, 1992).
+The PSV replaces the p ∼ Uniform(Π) in classical SV by
+p ∼ Uniform(Π⪯ ), namely,
+
+pPSV (π) := 1[π∈Π⪯ ] |Π⪯ |.
+(2)
+
+2. Preliminaries
+2.1. From Shapley Value to Random Order Values
+
+2.3. Soft Priority: Individual (Soft) Priority Weights
+Let [n] = {1, . . . , n} denote the set of players (data points,
+features). For each subset S ⊆ [n], let U (S) be the reWhile the PSV is a very natural approach to enforce priority,
+ward earned by the joint work of members in S: here
+it equally weights all valid linear extensions. In practice,
+U : 2[n] → R is called utility function. The classical royalty
+individual players may vary in their trustworthiness, cost/sharing problem asks for a principled method to split the
+convenience of data collection, potential legal risk of data
+total revenue U ([n]) to each player, considering their conuse, etc. We are inclined to include trusted/low-risk data
+tributions on a competitive basis. Shapley (1953) showed
+earlier in π. Notice that this consideration cannot be capthat the Shapley Value (SV) ψiSV defined as follows is the
+tured by the priority relationship (i.e., the DAG). Therefore,
+only payoff method that satisfies four axioms: efficiency,
+Kalai & Samet (1987) and Nowak & Radzik (1995) introlinearity, null player and symmetry (see Appendix A):
+duced individual weights λ := (λ1 , . . . , λn ), λi > 0, ∀i
+X |S|!(n − |S| − 1)! 
+
+1
+ψiSV (U ) :=
+U (S∪{i})−U (S) .
+It may be cleaner to solely define ≺. We define and base our
+n!
+narration on ⪯ just to better connect to existing literature.
+S⊆[n]\{i}
+
+2
+
+Priority-Aware Shapley Value
+
+and Weighted Shapley Value (WSV). WSV is defined for a
+particular class of DAGs, called ordered partition.
+
+hard priority but no individual weighting; or (ii) incorporate
+weights under the strong structural assumption of ordered
+partitions (WSV). Our goal is to design a general approach
+that combines their strengths while avoiding their limitations. Specifically, we look for a p(⪯,λ) that satisfies the
+following desiderata:
+
+Ordered Partition. Let (B1 , . . . , Bm ) be a partition of
+[n], i.e., Bi ∩ Bj = ∅, ∀1 ≤ i < j ≤ m and ∪m
+i=1 Bi = [n].
+The DAG consists of edges i ≺ j if and only if i ∈ Br ,
+j ∈ Br+1 for some r ∈ [m − 1].
+
+1. Hard priority: p(⪯,λ) is supported on Π⪯ .
+
+In WSV, the permutation π ∈ Π⪯ is sampled in a backward
+fashion. To illustrate, suppose B1 = {1, 2}, B2 = {3, 4, 5}.
+First sample π5 (the last element of π) from candidates
+3, 4, 5 with probabilities (λ3 , λ4 , λ5 )/(λ3 + λ4 + λ5 ). Suppose 4 is selected for π5 , then select π4 among the remaining
+3 and 5 w.p. (λ3 , λ5 )/(λ3 + λ5 ), and so on. After finishing
+B2 , select π2 between 1 and 2, which also decides π1 .
+Remark 2.3. From this example, we see that λ acts as a soft
+priority parameter: a larger λi increases the probability that
+i appears later in π. This is meaningful in real applications
+because attribution is inherently context dependent: the
+marginal gain of adding i can be very different when the
+coalition already contains other (more trusted, less risky,
+or more “original”) contributors. Thus, increasing λi does
+not (imprudently) directly lower i’s payoff; instead it
+prefers to evaluate i under richer contexts, which can
+reduce spurious early credit for noisy/duplicated/high-risk
+contributors while still allowing genuinely complementary
+contributors to remain valuable even when delayed in π.
+
+2. Soft priority: when i, j are both admissible, their
+selection probabilities should have ratio λi : λj .
+3. If λi ≡ constant, p(⪯,λ) reduces to PSV.
+4. If DAG is an ordered partition, p(⪯,λ) reduces to WSV.
+5. p(⪯,λ) should be computationally feasible.
+3.2. Priority-Aware Shapley Value (PASV)
+Now we propose a p(⪯,λ) that simultaneously captures hard
+precedence and player-specific weights. Our method is
+called Priority-Aware Shapley Value (PASV).
+p(⪯,λ) (π) ∝
+
+From Definition 2.4 onward, we slightly abuse notation:
+while S still denotes a subset of [n], it now conforms to ⪯.
+Definition 2.5 (Maximal elements). For S ∈ S ⪯ , the set of
+maximal elements, denoted by max⪯ (S), is defined as
+
+k∈max⪯ (St )
+
+recovering WSV. Formally, we have the following results.
+Proposition 3.1 (Reduction to PSV). If λ1 = · · · = λn ,
+then p(⪯,λ) (π) = pPSV (π), ∀π ∈ Π⪯ .
+
+max⪯ (S) := {i ∈ S : ∄j ∈ S s.t. i ≺ j}.
+
+Proposition 3.2 (Reduction to WSV). If the DAG is an
+ordered partition, then p(⪯,λ) (π) = pWSV (π), ∀π ∈ Π⪯ .
+
+Weighted Shapley Value (WSV) (Kalai & Samet, 1987;
+Nowak & Radzik, 1995). Write π = (π1 , . . . , πn ) ∈ Π⪯
+and St := {π1 , . . . , πt }, define
+n
+Y
+
+λ πt
+P
+
+t=1
+
+j∈max⪯ (St ) λj
+
+.
+
+for π ∈ Π⪯ . (4)
+
+From (4), we can see how PASV combines the hard and
+soft priorities – while restricting π to Π⪯ enforces the hard
+priority, the soft priorities of admissible candidates for each
+πt is adjusted by λi ’s, thus reflecting the soft priority. When
+λi ’s are all equal, (4) becomes p(⪯,λ) (π) ∝ 1, and PASV
+recovers PSV. When the DAG is an ordered partition, it
+Qn
+λπt
+can be shown that p(⪯,λ) (π) = t=1 P
+λk , thus
+
+To formalize this procedure, we define two concepts.
+Definition 2.4 (Feasible set). A subset S ⊆ [n] is feasible
+if i ∈ S and j ⪯ i imply j ∈ S. Denote the collection of
+feasible sets by S ⪯ := {S ⊆ [n] : S is feasible}.
+
+pWSV (π) =
+
+n
+Y
+λ | max⪯ (St )|
+Pπt
+,
+k∈max⪯ (St ) λk
+t=1
+
+Remark 3.3. When developing a general p(⪯,λ) , one may
+be tempted to directly apply the formulation of WSV (3) to
+general DAGs, but the resulting distribution does not reduce
+to PSV for equal weights. The | max⪯ (St )| factor on the
+numerator of (4) is crucial for ensuring Proposition 3.1.
+
+(3)
+
+While WSV addresses the limitation of PSV, it only applies
+to special DAGs (ordered partitions), limiting its practicality.
+
+PASV can also be efficiently computed. We relegate the
+algorithm details to the dedicated Section 4.
+
+3. Our Method
+
+3.3. Axiomatization of PASV
+Like SV, PSV and WSV, our PASV can also be naturally
+derived from a set of axioms. Here, we provide readers an
+outline as a preview of this axiomatization. Notice that it
+contains acronyms and jargon that will be defined later.
+
+3.1. Desired Properties
+Section 2 reviewed mainstream existing methods. They either (i) treat all linear extensions uniformly (PSV), capturing
+3
+
+Priority-Aware Shapley Value
+
+• Axioms E + L + NP + M + MS ⇒ PROV (a big family)
+
+structured family of precedence-respecting order distributions that factorize along the chain of feasible sets induced
+by a linear extension. Conceptually, this is the precedenceconstrained analogue of stage-wise models for rankings and
+permutations, such as the Plackett–Luce (Luce et al., 1959;
+Plackett, 1975) and multistage ranking families (Fligner &
+Verducci, 1988). To this end, we consider the family of
+distributions on Π⪯ of the form
+
+• Focus on “SCF form” to narrow down PROV
+• Add axioms WP + EWU to align with boundary cases
+Finally, PROV + SCF + WP + EWU ⇒ PASV. Next, we
+carry out and elaborate this outline.
+3.3.1. P RECEDENCE R ANDOM O RDER VALUE (PROV)
+
+p(π) ∝
+
+Recall that the classical Shapley value can be rewritten as
+a random order value (ROV). In presence of priority, we
+should of course constrain our consideration to p distributions supported not on all of Π, but on the subset Π⪯ ⊆ Π
+that respects priority.
+
+n
+Y
+
+w⪯,λ (πt ; St ),
+
+for π ∈ Π⪯
+
+(5)
+
+t=1
+
+for some w⪯,λ . This form (5) is the precedence-constrained
+analogue of Plackett-Luce: the likelihood of some π depends on π only through the sequence of feasible candidates {St }nt=1 , and the chosen candidate at this time. It
+is often convenient
+to decompose w as a scale (“state”):
+P
+s⪯ (St ) := k∈max⪯ (St ) w⪯,λ (k; St ), where we shall further assume that s⪯ (St ) does not depend on λ, which is true
+for WSV; and a normalized
+ priority weighting (“choice”):
+c⪯,λ (i; St ) := w⪯,λ (i; St ) s⪯ (St ).
+
+Definition 3.4 (Precedence random order value (PROV)).
+A value ψ is called a precedence random order value
+(PROV) if there
+some p supported
+on Π⪯ , s.t.
+ exists
+
+i
+i
+ψi (U ) = Eπ∼p U (π ∪ {i}) − U (π ) for all U and i.
+While it may be natural to treat PROV as a basic assumption or an axiom, we will show that in fact PROV can be
+derived from five more basic axioms. These axioms include
+three Shapley axioms: Efficiency (E), Linearity (L) and
+Null player (NP) (see Appendix A); plus two more axioms:
+Monotonicity (M) and Maximal support (MS).
+
+Definition 3.9 (State–Choice Factorization (SCF)). For
+a poset ([n], ⪯), define the prefix (remaining) set St =
+{π1 , . . . , πt } as a chain of feasible sets (t = n, n−1, . . . , 1).
+A state-choice factorization (SCF) assigns an unnormalized weight to π by multiplying:
+
+Axiom 3.5 (Monotonicity). If U is monotone, i.e., S ⊆
+T ⇒ U (S) ≤ U (T ) for all S, T ⊆ [n], then every player
+receives a nonnegative payoff: ψi (U ) ≥ 0 for all i ∈ [n].
+
+(i) a state factor s⪯ (St ) that captures global bias induced
+by the precedence structure;
+
+Weber (1988) showed that axioms E + L + NP + M ⇒ ROV.
+Since PROV is a special ROV, it naturally inherits these
+axioms. To present axiom MS, we first define elementary
+game – it has long been used for analyzing Shapley’s values.
+
+(ii) a choice factor c⪯,λ ( · ; S) that encodes soft priority
+weighting of admissible candidates max⪯ (S); it is the
+entry point for the individual weights λ.
+
+Definition 3.6 (Elementary game). For a given subset
+T ⊆ [n], the elementary game uT ∈ Γ on T is defined
+by uT (S) := 1{T ⊆ S} for S ⊆ [n].
+
+Formally, an SCF p has the following form
+p(π) ∝
+
+⪯
+
+We focus on elementary games for feasible T , i.e., T ∈ S
+(recall Definition 2.4). The precedence relation singles out
+the maximal elements of T as sole the recipients of credit.
+This motivates the following axiom.
+
+n
+Y
+
+s⪯ (St ) c⪯,λ (πt ; St ),
+
+for π ∈ Π⪯ ,
+
+(6)
+
+t=1
+
+where
+
+P
+
+i∈max⪯ (St ) c⪯,λ (i; St ) = 1.
+
+The merits of SCF are three-fold:
+
+Axiom 3.7 (Maximal support). For any elementary game
+uT with T ∈ S ⪯ , if player i is not maximal in T , i.e.,
+i∈
+/ max⪯ (T ), then ψi (uT ) = 0.
+
+• It remains flexible enough to capture a broad range of
+precedence-respecting random-order models, containing PSV and WSV as special cases.
+
+Theorem 3.8 (Axiomatization of PROV). A value ψ is
+PROV ⇔ it satisfies axioms E + L + NP + M + MS.
+
+• It preserves a clear interpretation of λ weights as a soft
+priority parameter;
+
+3.3.2. S TATE -C HOICE FACTORIZATION (SCF)
+The PROV as defined in Definition 3.4 is a huge family, and
+using the most general PROV directly is computationally
+challenging. We therefore restrict attention to a broad and
+
+• Its factorization form enables efficient MCMC sampling procedures for generating π.
+4
+
+Priority-Aware Shapley Value
+
+3.3.3. B OUNDARY CASE AXIOMS
+
+1
+
+1
+
+2
+
+3
+
+5
+
+1
+
+5
+3
+
+4
+
+6
+
+2
+
+6
+
+j ∈ max⪯ ([n]) \ {i}. Then for any λ′ satisfying λ′j = λj
+for all j ̸= i (with arbitrary λ′i > 0), and for every π ∈ Π,
+
+3.3.4. A XIOMATIZATION OF PASV
+
+lim p(⪯,λ) (π) = p(⪯ ,λ ) (π) · 1[π∈Π⪯′ ] .
+′
+
+Theorem 3.12. Suppose p is a PROV as in Definition 3.4
+satisfying the SCF form as in (6). Then the only p that also
+satisfies Axioms 3.10 and 3.11 is PASV as defined in (4).
+
+′
+
+λi →∞
+
+Proposition 3.14. Assume ⪯ is an ordered partition
+(B1 , . . . , Bm ). Fix a layer B ∈ {B1 , . . . , Bm } and a
+nonempty subset G ⊆ B. Fix weights (λj )j /∈G and consider
+the regime in which λi = λ̄ for all i ∈ G while λ̄ → ∞.
+Let ⪯′ represent the refined ordered partition obtained by
+splitting B into two ordered, consecutive layers (B \ G, G).
+e
+Then for any λ′ satisfying λ′j = λj for all j ∈
+/ G and λi = λ
+e > 0, and for every π ∈ Π,
+for i ∈ G with arbitrary λ
+
+3.4. Limiting Cases of the Priority-Aware Distribution
+This section studies what happens to the PASV order distribution when a player weight becomes extreme. The goal
+is to clarify how the soft priorities encoded by λ interact
+with the hard precedence constraints ⪯ (equivalently, the
+DAG). In PASV (4), λ affects the distribution only through
+the choice factor c⪯,λ (i; S) over the currently admissible
+(maximal) set max⪯ (S). For i ∈ max⪯ (S), we have
+k∈max⪯ (S)\{i} λk
+
+3
+
+Figure 2. Extreme λ may translate into DAG edges: Top: sending
+λ4 → ∞ adds an edge 2 → 4 (on the right we omitted the edge
+3 → 4 as it is implied by the path 3 → 2 → 4). Bottom: sending
+λ3 → ∞ adds an edge 4 → 3, forming a refined layer structure.
+
+Axiom 3.10 recovers WSV and Axiom 3.11 recovers PSV.
+
+λi +
+
+4
+
+4
+
+Axiom 3.11 (Equal-Weight Uniformity). If λi ≡ c for all
+i ∈ [n], then the induced distribution is uniform on Π⪯ .
+
+.
+
+3
+
+λ3 → ∞
+
+Axiom WP requires that at each step the probability of
+choosing each admissible candidate i is proportional to λi .
+
+λi
+
+4
+
+λ4 → ∞
+
+Axiom 3.10 (Weight Proportionality). For every feasible
+c⪯,λ (i;S)
+λi
+set S ∈ S ⪯ and every i, j ∈ max⪯ (S), c⪯,λ
+(j;S) = λj .
+
+P
+
+1
+2
+
+We desire our method to contain PSV and WSV as special
+cases. This is characterized by the following two axioms.
+
+c⪯,λ (i; S) =
+
+2
+
+lim p(⪯,λ) (π) = p(⪯ ,λ ) (π)1[π∈Π⪯′ ] .
+′
+
+′
+
+λ̄→∞
+
+More broadly, however, extreme weights are not equivalent
+to adding a fixed set of edges in general. The key reason
+is that the tie-break is triggered only when the extremeweight player becomes maximal, and whether/when this
+happens depends on the realized history of the (backward)
+construction of π. Figure 3 gives a counterexample.
+
+(7)
+
+If max⪯ (S) = {i}, changing λi has no effect. When
+| max⪯ (S)| ≥ 2 all other weights are held fixed, (7) implies c⪯,λ (i; S) → 1 as λi → ∞ and c⪯,λ (i; S) → 0 as
+λi → 0+ . In other words, extreme weights induce an
+(almost) deterministic tie-break among simultaneously
+admissible players: λi → ∞ selects i whenever it is maximal, i.e., pushing i as late as allowed in π (in the forward
+order), while λi → 0+ pulls i as early as possible in π.
+
+1
+
+2
+
+2
+1
+
+3
+
+λ3 → ∞
+
+3
+
+4
+
+4
+
+Figure 3. Extreme λ may not always translate into a new DAG
+edge: if π4 = 2, then 1 and 4 are both eligible for π3 ; the (only
+possible) edge to add 1 → 3 would incorrectly deny 1’s candidacy.
+
+Interestingly, in some cases, extreme weights can simply
+translate into new DAG edges. We showcase two scenarios:
+(i) the extreme-weight player is globally maximal, and (ii)
+DAG is an ordered partition. Figure 2 illustrates two examples. Importantly, we emphasize the following takeaways.
+
+Priority sweeping. Beyond producing a single valuation,
+PASV enables a handy sensitivity/robustness test w.r.t. λ.
+Fixing the DAG and a baseline λ, for each player i, our
+priority sweeping tracks how the valuation of i changes
+as λi varies in (0, ∞). This would tell us which players’
+values are stable versus sensitive to its weight.
+
+• These new edges will not create cycles; and
+• Setting weights in whatever way will not delete, rewire
+or reverse existing edges in the original DAG.
+Formally, we have the following theoretical results.
+
+4. Computation Algorithm for PASV
+
+Proposition 3.13. Fix a poset ([n], ⪯) and i ∈ max⪯ ([n]),
+let ⪯′ be the partial order obtained by adding j ≺ i for all
+
+Recall that PASV is defined in an ROV form as in (1), where
+p = pPASV as in (4). While the expectation in (1) can be
+5
+
+Priority-Aware Shapley Value
+
+Algorithm 1 M-H algorithm for sampling π ∼ p(⪯,λ) (·).
+
+easily approximated by a Monte Carlo sampling with i.i.d.
+π ∼ pPASV , the main computational challenge lies exactly
+in how to sample π from the distribution pPASV , because the
+number of valid π’s grows exponentially with n. Practical
+computation therefore typically relies on Markov Chain
+Monte Carlo (MCMC) strategies.
+
+Input: poset ([n], ⪯); weights λ; number of samples
+NMC ; burn-in B; thinning τ ; index sampler f on [n − 1].
+Initialize π (0) ∈ Π⪯ ; Set of sampled π’s: T ← ∅
+for t = 1 to B + τ (NMC − 1) + 1 do
+Draw k ∼ f ; set π ← π (t−1)
+if πk and πk+1 are incomparable then
+π ′ ← (π with (πk , πk+1 ) swapped)
+Compute (Sk , Sk′ , Mk , Mk′ ) and α, c.f. (8), (9)
+With prob. α, set π (t) ← π ′ ; otherwise set π (t) ← π
+else
+π (t) ← π
+end if
+if t > B and (t − B − 1) mod τ = 0 then
+Append π (t) to T
+end if
+end for
+return T
+
+Adjacent-swap M-H on Π⪯ . The common approach to
+MCMC on Π⪯ is via adjacent swaps of incomparable neighbors (Karzanov & Khachiyan, 1991; Bubley & Dyer, 1999).
+We adopt this method but generalize the uniform distribution to p(⪯,λ) (·). To start, it is not difficult to find one valid
+π ∈ Π⪯ as the initialization (Kahn, 1962). Then in each
+iteration, sample k ∈ [n − 1] at random. If (πk , πk+1 ) are
+incomparable, i.e., neither of πk , πk+1 precedes the other,
+propose π ′ by swapping them; otherwise, stay at π. The
+Metropolis–Hastings (M-H) acceptance probability is
+n
+o
+
+α := P(π → π ′ ) = min 1, p(⪯,λ) (π ′ ) p(⪯,λ) (π) . (8)
+
+Synthetic
+
+Although p(⪯,λ) (·) is defined as a product over n steps, the
+acceptance ratio in (8) can be evaluated using only local
+information around chosen position k.
+
+Boosters
+
+Original
+Owner
+
+Lemma 4.1. Fix a poset ([n], ⪯) and weights λ. Let
+π ∈ Π⪯ and fix k ∈ [n − 1] such that πk and πk+1 are
+incomparable. Let π ′ be the permutation obtained by swapping (πk , πk+1 ) in π. Then we have
+
+P
+p(⪯,λ) (π ′ )
+i∈Mk λi /|Mk |
+
+= P
+,
+(9)
+′
+p(⪯,λ) (π)
+j∈M ′ λj /|Mk |
+
+Copier
+
+Anchor
+
+Poisoner
+
+Figure 4. The DAG used for MNIST/CIFAR10. Only one Booster
+is shown. Here, (for example) a blue edge from Owner to half of
+Copier represents 100 × 50 edges between their members.
+
+k
+
+where Mk = max⪯ (Sk ), Mk′ = max⪯ (Sk′ ), Sk =
+{πt }t∈[k] , and Sk′ = {πt }t∈[k−1]∪{k+1} .
+
+• Owner: original labeled data points.
+• Anchor: classical augmentation applied to Owner
+(e.g., rotation/blur); producing synthetic data points
+that downstream providers may reuse.
+
+Algorithm 1 describes our algorithm for sampling π ∼
+pPASV . Based on Algorithm 1, PASV can be efficiently
+approximated by a Monte Carlo on (1) without difficulty.
+
+• Four Boosters: four generative model families, GAN
+(Goodfellow et al., 2020), DDPM (Ho et al., 2020),
+DDIM (Song et al., 2020), and FM (Lipman et al.,
+2022) that produce synthetic data points. Each Booster
+contributes 50 samples from a genAI model trained on
+Owner and another 50 samples trained on Anchor.
+
+5. Experiments
+5.1. PASV for Data Valuation
+We evaluate PASV in a data market setting with explicit data
+lineage (some providers’ training examples are derived or
+copied from others), comparing it against existing methods.
+
+• Copier: copies half from Owner and half from Anchor.
+• Poisoner: copies the same way as Copier but randomly
+flips labels (harmful reuse).
+
+Setup: data and utility. We use MNIST (LeCun et al.,
+2002) and CIFAR10 (Krizhevsky et al., 2009), both containing 10 classes, with a k-NN classifier (MNIST: pixel
+features; CIFAR10: pretrained ResNet-18 embeddings (He
+et al., 2016)). We fix a balanced test set of size 1000 (100
+per class) and define the utility of a training subset S as
+test accuracy, U (S). We consider eight data providers, each
+contributing 100 training data points (n = 800 players (data
+points) in total):
+
+Data lineage and DAG. We encode data lineage as a
+precedence DAG over blocks. Owner and Anchor each form
+a block. For every reuse-based provider (4 Boosters, Copier,
+Poisoner), we split its data into two blocks: Owner-derived
+vs. Anchor-derived. This yields a 14 block-DAG (which is
+not an ordered partition), illustrated in Figure 4.
+6
+
+SV
+
+0.50
+
+0.10
+0.05
+0.00
+
+0.25
+
+Marginal Contribution
+
+0.10
+0.05
+0.00
+
+PSV
+
+PASV (b = 2)
+
+PASV (b = 8)
+
+PASV (b = 32)
+
+0.10
+0.05
+0.00
+
+0.10
+0.05
+0.00
+
+0.10
+0.05
+0.00
+
+DDIM
+
+FM
+
+Copier
+
+Ow
+An ner
+ch
+GAor
+DD N
+DDPM
+IM
+F
+Co M
+Po pier
+iso
+ne
+r
+
+DDPM
+
+Ow
+An ner
+ch
+GAor
+DD N
+DDPM
+IM
+F
+Co M
+p
+Po ier
+iso
+ne
+r
+
+GAN
+
+Ow
+An ner
+ch
+GAor
+DD N
+DDPM
+IM
+F
+Co M
+Po pier
+iso
+ne
+r
+
+Anchor
+
+Ow
+An ner
+ch
+GAor
+DD N
+DDPM
+IM
+F
+Co M
+p
+Po ier
+iso
+ne
+r
+
+Ow
+An ner
+ch
+GAor
+DD N
+DDPM
+IM
+F
+Co M
+Po pier
+iso
+ne
+r
+
+Owner
+
+0.010
+
+Poisoner
+
+0.004
+0.002
+0.000
+0.002
+
+0.005
+
+0 200 400 600 800
+
+s
+
+Provider-Wise Value
+
+WSV
+
+0.00
+
+Ow
+An ner
+ch
+GAor
+DD N
+DDPM
+IM
+F
+Co M
+p
+Po ier
+iso
+ne
+r
+
+Provider-Wise Value
+
+Priority-Aware Shapley Value
+
+Limiting Anchor
+
+0 200 400 600 800 0 200 400 600 800 0 200 400 600 800 0 200 400 600 800 0 200 400 600 800 0 200 400 600 800 0 200 400 600 800
+
+s
+
+s
+Limiting Boosters
+
+s
+
+s
+Limiting Copier
+
+s
+
+s
+
+Limiting Poisoner
+
+s
+
+0.1
+0.0
+0 1 2 3 4 5 6 7 8 9 10 11 0 1 2 3 4 5 6 7 8 9 10 11 0 1 2 3 4 5 6 7 8 9 10 11 0 1 2 3 4 5 6 7 8 9 10 11
+
+log2 (b)
+
+Anchor
+
+GAN
+
+log2 (b)
+DDPM
+
+DDIM
+
+FM
+
+log2 (b)
+Copier
+
+Poisoner
+
+log2 (b)
+
+Figure 5. MNIST results. Top: Provider-level values (summed value for each provider (Lee et al., 2025); 10 repetitions, report mean &
+±1 std. bars; Middle: Marginal contributions: E[U (π i ∪ {i}) − U (π i )||π i | = s] vs s, c.f. (1), p := Uniform(Π⪯ ); Bottom: Priority
+sweeping: c ∈ {(0, 1, 0, 0, 0), . . . , (0, 0, 0, 0, 1)}, b ∈ {2k : k ∈ [11]}, Owner not swept (alone in maximal set, weight has no effect).
+
+Benchmarks. (i) classical SV (Ghorbani & Zou, 2019);
+(ii) WSV: approximate the DAG by a two-layer orderedpartition: Original (Owner) ≺ Synthetic (Anchor, Boosters,
+etc) (Zheng et al., 2025); (iii) PSV (Faigle & Kern, 1992).
+
+tions, when permitted by the DAG (see Remark 2.3). We
+therefore plot the average marginal gain conditional on entering at each position s for each data provider. Row 2 of
+Figure 5 shows the marginal-gain curves and offers insights
+(c.f. caption of Figure 5). Anchor and 4 Boosters show
+similar trends: the earlier in π the more significant the recognition of their positive contributions, and FM showed the
+most prominent trend. These position-dependent patterns
+explain the difference between PSV and PASV observed in
+Row 1. PASV tends to evaluate data from Anchor, Copier,
+and Poisoner in richer coalition contexts and thus places
+more weight on their tail-regime marginal gains, leading to
+more diminished final valuations.
+
+Soft priority weights. We set individual weights according to their provider type as λ = bc , with a shared base b > 1
+and exponents c = (cOwner , cAnchor , cBooster , cCopier , cPoisoner ).
+Main comparison. We first conduct a main comparison,
+in which c = (0, 1, 0, 2, 2) and b ∈ {2, 8, 32}, mildly penalizing Anchor and more strongly penalizing Copier/Poisoner.
+Here, we use weights to softly incorporate our prior knowledge of usefulness, e.g., anticipating that the test set might
+not necessarily feature rotated images as seen in Anchor, our
+λ favored Boosters over Anchor, since Boosters contain data
+generated directly based on Owner without excess rotation.
+
+Interestingly, Copier/Poisoner both show a “positive spike”
+for small |π i |; this is because when |π i | ≈ 100, the sampled
+size from each class (on average just 10) may be unstable;
+in this situation, adding copied or even noisy data may still
+benefit the numerical stability of the classifier: when a class
+has few members present in a small π i , adding Copier data
+can help k-NN avoid drawing neighbors from other classes.
+
+Row 1 of Figure 5 reports provider-level results for MNIST
+(CIFAR10 in Appendix E.3). SV over-credits data reuse
+(e.g., Copier), as it ignores precedence. WSV favors Owner
+by forcing “Original ≺ Synthetic” but still mixes up among
+synthetic providers due to its structural limitation (Anchor
+is less credited, positive values for Copier). PSV better preserves credit for upstream sources and can reveal negative
+value for Copier. PASV then provides a more flexible controlled adjustment: increasing b progressively suppresses the
+penalized types (Anchor/Copier/Poisoner) while respecting
+the same reuse constraints as PSV.
+
+Sensitivity analysis. Row 3 of Figure 5 shows how
+provider-level valuations vary as b grows for each of Anchor/Booster/Copier/Poisoner with their own indicator c,
+c.f. caption of Figure 5. Applying our theoretical result in
+Section 3.4, we predict that as b → ∞, for each of Boosters/Copier/Poisoner, we can compute a PSV with the DAG
+with added edges incoming from other providers (e.g., the
+analysis for Boosters sets c = (0, 0, 1, 0, 0), then b → ∞ is
+equivalent to adding edges {Copier, Poisoner} → Boosters).
+In Row 3 plots, we used dashed lines to mark the PASV
+computed under the new DAG with added edges, and they
+well-corroborate observed PASV values for large b, vali-
+
+To better understand the effect of priority sweeping in PASV
+relative to PSV, we examine how a data point’s marginal
+gain depends on its entry position in π. In PASV, data points
+with larger λj are more likely to be evaluated at later posi7
+
+Priority-Aware Shapley Value
+
+the uniform-weight WSV; for the general DAG, computing
+PSV/PASV requires the MCMC sampler in Section 4. Next,
+we perform a priority sweeping: for each feature i, vary
+λi ∈ {2k : k ∈ [−8 : 8]} while holding λj ≡ 1, ∀j : j ̸= i.
+
+5.2. Application to Feature Attribution
+
+Feature
+
+While priority relations are usually considered for data Shapley, in feature Shapley, domain knowledge may require certain variables to be considered before others (e.g., causal ancestors before descendants) (Frye et al., 2020). Here we test
+PASV in an attribution setting with precedence constraints
+encoded by a general DAG and focus on the attribution
+sensitivity to: (i) DAG; and (ii) priority weights.
+
+Value
+
+Sex
+
+Country
+
+Race
+
+Relationship
+Capital Gain
+
+Age
+
+Capital Loss
+
+Sex
+
+Hours per week
+
+Marital Status
+
+Education
+
+Relationship
+
+Occupation
+
+Capital Gain
+
+Capital Loss
+
+Race
+
+Workclass
+
+Education
+Occupation
+
+(a) Ordered Partition
+
+175
+150
+125
+100
+75
+50
+25
+
+log2 ( )
+
+Results. Figure 7 highlights two takeaways. First, the
+left panel shows that DAG matters a lot: with the same
+utility function, the PSV valuation changes noticeably between ordered partition and the richer DAG, indicating
+that using a coarse DAG (e.g., ordered partition) may
+significantly alter results. Second, the priority sweeping with our PASV in the right panel provides a crucial sensitivity diagnosis. For example, several demographic variables (age, sex, race) decrease when delayed (large λ), whereas others (e.g., native-country,
+relationship, occupation) increase, and some features exhibit non-monotone responses. This is consistent
+with the intuitive understanding in Section 5.1: moving a
+feature later changes the set of variables already present
+when its marginal contribution is evaluated, so the effect
+depends on whether the feature is redundant with, or complementary to, its typical competitors under the assumed
+DAG. Overall, PASV’s priority sweeping provides a practical diagnostic tool for identifying which attributions are
+robust to priority weighting (e.g., martial-status,
+capital-loss, etc) and which are unstable (most noticeably native-country and relationship).
+
+Marital Status
+
+Country
+
+95.6
+86.9
+70.6
+172.6
+98.9
+102.1
+106.0
+103.4
+124.4
+102.7
+112.8
+100.4
+
+Figure 7. Results of feature attribution for Census Income dataset.
+(Left) PSV (=PASV) under the two DAGs with uniform weights.
+(Right) Sensitivity analysis using priority sweeping.
+
+Utility function. For a predictor f , let fy (x) denote the
+predicted probability of assigning an input x to the (true)
+class y. For any subset of features S ⊆ [n], we first use
+a k-NN imputation procedure (detailed steps
+ in Appendix
+F.1) to estimate uS (x, y) = Ex′ ∼p(x′ |xS ) fy (xS ⊕ x′S c )
+(Janzing et al., 2020; Sundararajan & Najmi, 2020; Frye
+et al., 2021). Then we
+ can define
+ the utility function as
+U (S) = E(x,y)∼p(x,y) uS (x, y) and approximate it by empirically sampling (x, y) from the original data.
+Age
+
+Ordered Partition
+General DAG
+
+102.7
+106.4
+121.8
+3.5
+101.2
+96.7
+86.5
+85.9
+27.6
+106.4
+98.8
+118.0
+
+0.00 0.01 0.02 0.03 0.04 -8 -7 -6 -5 -4 -3 -2 -1 0 1 2 3 4 5 6 7 8
+
+Setup. We follow Frye et al. (2020) on the UCI Census
+Income (Adult) dataset (Asuncion et al., 2007), predicting
+whether annual income exceeds $50K. We remove fnlwgt
+and education-num to avoid redundancy, leaving n =
+12 features as players. We train a two-hidden-layer MLP
+with 100 units per layer.
+
+Workclass
+
+age
+sex
+race
+native-country
+marital-status
+education
+occupation
+workclass
+relationship
+capital-gain
+capital-loss
+hours-per-week
+
+Percentage relative to PSV ( = 1)
+
+dating our theory’s prediction. However, this simplified
+translation does not apply to Anchor for the same reason as
+the example in Figure 3.
+
+Hours per week
+
+(b) General DAG
+
+Figure 6. Two DAG specifications over the 12 income features.
+
+6. Computational Cost and DAG Sensitivity
+DAG specification. Figure 6 compares two DAGs encoding which feature orders are admissible. The first is a coarse
+ordered partition used by Frye et al. (2020), where four
+demographic variables precede the rest (Figure 6a). The
+second is a more detailed precedence DAG over the same
+12 features (Figure 6b) that adds AI-suggested additional
+relations based on common sense and domain knowledge
+(e.g., education ≺ occupation); details in Appendix F.3.
+
+We now address two practical deployment questions: how
+expensive is PASV on larger player sets, and how sensitive
+is the result to the DAG?
+6.1. Computational Cost
+Overview. PASV’s computation has two distinct stages:
+1. a burn-in stage that runs the adjacent-swap M-H chain
+until stationarity, no utility evaluations; 2. a Monte Carlo
+stage that retains thinned samples of player permutations,
+evaluates U (S) along the resulting prefix sets, and use the
+induced marginal contributions to approximate PASV. In
+
+Experimental procedure. For each DAG, we first compute PASV with uniform weights λi ≡ 1, which reduces to
+PSV. For the ordered-partition DAG, this also coincides with
+8
+
+Priority-Aware Shapley Value
+
+the data-valuation experiment of Section 5.1, the utility
+involves training and evaluating a downstream classifier,
+and the Monte Carlo stage dominates. Under inexpensive
+utilities, however, the burn-in stage can be non-negligible.
+
+the peak memory grows accordingly (tens of GB at n =
+2048; Figure 12). Choosing between the direct estimator
+and the proxy variant is therefore closely tied to the balance
+between proxy quality and proxy budget.
+
+Stage 1: mixing time. We assess mixing via a pairwise order discrepancy Dt = maxi,j∈[n] |Ptπ0 (i ≺π j) − P⋆ (i ≺π
+j)|, where i ≺π j means i appears before j in π, P⋆ is
+the stationary distribution, and the empirical mixing time
+is min{t : Dt < 1/4}. We compute P⋆ exactly by adapting the backward-removal recursion of Kangas et al. (2016)
+to replace unweighted extension counts with a λ-weighted
+mass; see Appendix D.1.1. Across four synthetic poset families in Talvitie et al. (2017) with λ ranging from a uniform
+baseline to λi ∼ Unif(1, R) with R up to 1024, Figure 8
+in Appendix D.1.1 shows that the empirical mixing time
+tracks O(n2 ) (Talvitie et al., 2017) rather than the worstcase bound, and that non-uniformity of λ has limited effect
+on mixing.
+
+6.2. Sensitivity to DAG Change
+Since the DAG is a modeling input rather than an observed
+ground truth, a natural deployment concern is how PASV’s
+output depends on the chosen DAG. A crucial point is that
+the right answer here is not blanket robustness. For example,
+suppose i and j both claim a major discovery; then the three
+cases: i ≺ j, j ≺ i, and i ∥ j (independent discovery) are
+expected to produce remarkably different PASV results for
+i and j. Therefore, we provide practitioners not a simple
+claim of robustness against DAG changes, but instead a
+diagnostic tool for the DAG-sensitivity of the result, similar
+in spirit to that of priority sweeping for λ. By varying
+one edge at a time and tracking the change in PASV, users
+obtain a per-edge importance ranking that flags which edges
+of their DAG warrant careful verification and which can be
+altered without significant consequence.
+
+Stage 2: Monte Carlo accuracy of direct MC estimator. We benchmark on a closed-form sum-of-unanimity
+utility whose true PASV admits a tractable expression (Appendix D.1.2). On this benchmark, the direct Monte Carlo
+estimator attains a small relative error using only a few
+hundred retained permutations, and remains tractable up to
+n = 8192 players under moderate compute (Figure 9).
+
+We revisit the feature-attribution setting of Section 5.2, fix
+λ ≡ 1, and perturb the general DAG of Figure 6b under four
+scenarios: (i) single-edge deletion (12 transitive-reduction
+edges); (ii) single-edge addition (20 sampled valid additions); (iii) minimum-cut deletions disconnecting the DAG
+into two equal components; and (iv) deleting or keeping
+only the top-K most influential edges. Let ψ and ψ ′ be the
+PASV vectors under original and altered DAG’s. We measure the Relative Attribution Shift RAS = ∥ψ ′ − ψ∥2 /∥ψ∥2
+and pair it with auxiliary diagnostics including the Pearson
+correlation of ψ and ψ ′ , the top-4 overlap, and the pairwiseorder change ∆ord . Appendix F.4.2 reports the full results
+(Figure 19). The behavior matches the intended use of
+our diagnostic tool: most single-edge perturbations have
+small RAS (below 0.05) with Pearson correlation above
+0.97, while a few critical edges and disconnecting cuts produce visibly larger shifts; across all scenarios RAS is closely
+tied to ∆ord . These importance scores provide users a clean
+priority list for DAG edge validation.
+
+An (optional) Regression MSR proxy for stage 2. The
+direct Monte Carlo estimator is simple and broadly applicable, but its statistical efficiency can be improved by exploiting the structures of the utility function. Adapting
+the Regression MSR method Witter et al. (2026) using a
+quadratic proxy Fumagalli et al. (2026) to our priority-aware
+setting, we develop a proxy-plus-bias-correction estimator.
+Concretely, we fit a quadratic proxy
+X
+X
+b (S) = U (∅) +
+U
+ai +
+bij ,
+(10)
+i∈S
+
+{i,j}⊆S,i∥j
+
+where i ∥ j denotes that neither i ⪯ j nor j ⪯ i. We
+compute PASV by
+b ) + ψ(U − U
+b ),
+ψ(U ) = ψ(U
+
+7. Conclusion
+
+(11)
+
+We introduce Priority-Aware Shapley Value (PASV), a
+unified Shapley-based attribution method that simultaneously enforces hard precedence constraints and incorporates
+soft priority weights. PASV recovers precedence-only and
+weight-only Shapley variants as special cases, admits scalable MCMC estimation for general DAGs, and has a solid
+axiomatization basis. An important tool that PASV provides
+practitioners is a sensitivity/robustness diagnostic procedure
+via priority sweeping.
+
+b ) can be estimated in a closed
+in which the first term ψ(U
+form by using fitted a and b values, leaving only the second
+b ) to be estimated by Monte
+term (i.e. residual) ψ(U − U
+Carlo. Whether the proxy improves over the direct Monte
+Carlo estimator depends on the number of players n and on
+how much low-order structure U exhibits. Appendix D.2
+reports a head-to-head comparison of these methods up to
+n = 2048: the proxy reduces approximation error under a
+fixed budget when n is moderate (e.g. n ≤ 512), but the
+proxy-fit cost scales as O(Ncoef d2 ) with d up to O(n2 ) and
+9
+
+Priority-Aware Shapley Value
+
+Impact Statement
+
+Fumagalli, F., Witter, R. T., and Musco, C. Polyshap: Extending kernelshap with interaction-informed polynomial
+regression. arXiv preprint arXiv:2601.18608, 2026.
+
+This paper presents work whose goal is to advance the field
+of Machine Learning. There are many potential societal
+consequences of our work, none of which we feel must be
+specifically highlighted here.
+
+Ghorbani, A. and Zou, J. Data shapley: Equitable valuation
+of data for machine learning. In International conference
+on machine learning, pp. 2242–2251. PMLR, 2019.
+
+Acknowledgement
+
+Goodfellow, I., Pouget-Abadie, J., Mirza, M., Xu, B.,
+Warde-Farley, D., Ozair, S., Courville, A., and Bengio, Y.
+Generative adversarial networks. Communications of the
+ACM, 63(11):139–144, 2020.
+
+Lee and Zhang were supported by NSF DMS-2311109. Liu
+and Tang were supported by NSF DMS-2412853 and Jane
+Street Group, LLC.
+
+Han, D., Wooldridge, M., Rogers, A., Ohrimenko, O., and
+Tschiatschek, S. Replication robust payoff allocation in
+submodular cooperative games. IEEE Transactions on
+Artificial Intelligence, 4(5):1114–1128, 2022.
+
+References
+Aas, K., Jullum, M., and Løland, A. Explaining individual
+predictions when features are dependent: More accurate
+approximations to Shapley values. Artificial Intelligence,
+298:103502, 2021.
+
+He, K., Zhang, X., Ren, S., and Sun, J. Deep residual learning for image recognition. In Proceedings of the IEEE
+conference on computer vision and pattern recognition,
+pp. 770–778, 2016.
+
+Asuncion, A., Newman, D., et al. UCI machine learning
+repository, 2007.
+Bubley, R. and Dyer, M. Faster random generation of linear
+extensions. Discrete mathematics, 201(1-3):81–88, 1999.
+
+Ho, J., Jain, A., and Abbeel, P. Denoising diffusion probabilistic models. Advances in neural information processing systems, 33:6840–6851, 2020.
+
+Covert, I. and Lee, S.-I. Improving kernelshap: Practical Shapley value estimation using linear regression. In
+International Conference on Artificial Intelligence and
+Statistics, pp. 3457–3465. PMLR, 2021.
+
+Janzing, D., Minorics, L., and Blöbaum, P. Feature relevance quantification in explainable ai: A causal problem.
+In International Conference on artificial intelligence and
+statistics, pp. 2907–2916. PMLR, 2020.
+
+Derks, J. A new proof for Weber’s characterization of the
+random order values. Mathematical Social Sciences, 49
+(3):327–334, 2005.
+
+Kahn, A. B. Topological sorting of large networks. Communications of the ACM, 5(11):558–562, 1962.
+Kalai, E. and Samet, D. On weighted Shapley values. International journal of game theory, 16(3):205–222, 1987.
+
+Faigle, U. and Kern, W. The Shapley value for cooperative games under precedence constraints. International
+Journal of Game Theory, 21(3):249–266, 1992.
+
+Kangas, K., Hankala, T., Niinimäki, T. M., and Koivisto,
+M. Counting linear extensions of sparse posets. In IJCAI,
+volume 16, pp. 603–609, 2016.
+
+Falconer, T., Kazempour, J., and Pinson, P. Toward
+replication-robust analytics markets. INFORMS Journal on Data Science, 2025.
+
+Karzanov, A. and Khachiyan, L. On the conductance of
+order Markov chains. Order, 8(1):7–15, 1991.
+Krizhevsky, A., Hinton, G., et al. Learning multiple layers
+of features from tiny images. 2009.
+
+Fligner, M. A. and Verducci, J. S. Multistage ranking models. Journal of the American Statistical association, 83
+(403):892–901, 1988.
+
+Kwon, Y. and Zou, J. Beta shapley: a unified and noisereduced data valuation framework for machine learning.
+arXiv preprint arXiv:2110.14049, 2021.
+
+Frye, C., Rowat, C., and Feige, I. Asymmetric Shapley values: incorporating causal knowledge into model-agnostic
+explainability. Advances in neural information processing
+systems, 33:1229–1239, 2020.
+
+LeCun, Y., Bottou, L., Bengio, Y., and Haffner, P. Gradientbased learning applied to document recognition. Proceedings of the IEEE, 86(11):2278–2324, 2002.
+
+Frye, C., de Mijolla, D., Begley, T., Cowton, L., Stanley, M.,
+and Feige, I. Shapley explainability on the data manifold.
+In International Conference on Learning Representations,
+2021.
+
+Lee, K., Liu, Z., Tang, W., and Zhang, Y. Faithful group
+Shapley value. In The Thirty-ninth Annual Conference
+on Neural Information Processing Systems, 2025.
+10
+
+Priority-Aware Shapley Value
+
+Li, W. and Yu, Y. One sample fits all: Approximating all
+probabilistic values simultaneously and efficiently. arXiv
+preprint arXiv:2410.23808, 2024.
+
+Zha, D., Bhat, Z. P., Lai, K.-H., Yang, F., Jiang, Z., Zhong,
+S., and Hu, X. Data-centric artificial intelligence: A
+survey. ACM Computing Surveys, 57(5):1–42, 2025.
+
+Lipman, Y., Chen, R. T., Ben-Hamu, H., Nickel, M., and
+Le, M. Flow matching for generative modeling. arXiv
+preprint arXiv:2210.02747, 2022.
+
+Zheng, X., Huang, Y., Chang, X., Jia, R., and Tan, Y.
+Rethinking data value: Asymmetric data Shapley for
+structure-aware valuation in data markets and machine
+learning pipelines. arXiv preprint arXiv:2511.12863,
+2025.
+
+Luce, R. D. et al. Individual choice behavior, volume 4.
+Wiley New York, 1959.
+Lundberg, S. M. and Lee, S.-I. A unified approach to interpreting model predictions. Advances in neural information processing systems, 30, 2017.
+Mersha, M., Lam, K., Wood, J., Alshami, A. K., and Kalita,
+J. Explainable artificial intelligence: A survey of needs,
+techniques, applications, and future direction. Neurocomputing, 599:128111, 2024.
+Nowak, A. S. and Radzik, T. On axiomatizations of the
+weighted Shapley values. Games and Economic Behavior,
+8(2):389–405, 1995.
+Plackett, R. L. The analysis of permutations. Journal of the
+Royal Statistical Society Series C: Applied Statistics, 24
+(2):193–202, 1975.
+Shapley, L. S. A value for n-person games. Contributions
+to the Theory of Games, 2, 1953.
+Song, J., Meng, C., and Ermon, S. Denoising diffusion
+implicit models. arXiv preprint arXiv:2010.02502, 2020.
+Sundararajan, M. and Najmi, A. The many Shapley values
+for model explanation. In International conference on
+machine learning, pp. 9269–9278. PMLR, 2020.
+Talvitie, T., Niinimäki, T. M., and Koivisto, M. The mixing
+of Markov chains on linear extensions in practice. In
+IJCAI, pp. 524–530, 2017.
+Wang, J. T. and Jia, R. Data Banzhaf: A robust data valuation framework for machine learning. In International
+Conference on Artificial Intelligence and Statistics, pp.
+6388–6421. PMLR, 2023.
+Weber, R. J. Probabilistic values for games, pp. 101–120.
+Cambridge University Press, 1988.
+Witter, R. T., Liu, Y., and Musco, C. Regression-adjusted
+monte carlo estimators for shapley values and probabilistic values. Advances in Neural Information Processing
+Systems, 38:21209–21240, 2026.
+Wu, M., Jia, R., Lin, C., Huang, W., and Chang, X. Variance reduced Shapley value estimation for trustworthy
+data valuation. Computers & Operations Research, 159:
+106305, 2023.
+11
+
+Priority-Aware Shapley Value
+
+A. Standard Axioms of the Shapley Value
+We briefly review the standard axiomatic framework leading to the Shapley value. Throughout this appendix we fix the
+player set [n] = {1, . . . , n} and assume U (∅) = 0 without loss of generality, since replacing U by U ′ (S) := U (S) − U (∅)
+leaves every marginal contribution U (S ∪ {i}) − U (S) unchanged. A value is a mapping ψ that assigns to each utility
+function U a payoff vector ψ(U ) = (ψi (U ))i∈[n] . The Shapley value ψ SV is characterized as the unique value satisfying the
+following four standard axioms (Shapley, 1953).
+Axiom A.1 (Efficiency; E). For a given utility function U ,
+X
+ψi (U ) = U ([n]).
+i∈[n]
+
+Axiom A.2 (Linearity; L). For given two utility functions U, V and all α, β ∈ R,
+ψ(αU + βV ) = αψ(U ) + βψ(V ).
+Axiom A.3 (Null Player; NP). If player i satisfies U (S ∪ {i}) = U (S) for all S ⊆ [n] \ {i}, then
+ψi (U ) = 0.
+Axiom A.4 (Symmetry; S). If two players i and j satisfy U (S ∪ {i}) = U (S ∪ {j}) for all S ⊆ [n] \ {i, j}, then
+ψi (U ) = ψj (U ).
+Efficiency requires that the entire value U ([n]) be fully allocated among players. Linearity ensures that payoffs respect
+additive changes in utility. That is, if a game is formed by combining (possibly with weights) two utilities, then the assigned
+payoffs combine in the same way. Null player formalizes a fairness requirement in the sense of that a player who never
+changes the utility receives zero payoff. Symmetry reflects anonymity by requiring identical treatment of players who are
+interchangeable in terms of their marginal contributions.
+
+B. Proofs of Propositions on Limiting Cases in Section 3.4
+B.1. Proof of Proposition 3.13
+Proof. Fix i ∈ max⪯ ([n]) and fix (λj )j̸=i . Let ([n], ⪯′ ) and λ′ be the modified poset and weight vector satisfying the
+properties in the statement, respectively. Since p(⪯,λ) is defined in proportional form, it is convenient to work with the
+corresponding unnormalized weight
+n
+Y
+| max (S )|λ
+P ⪯ t πt .
+w(⪯,λ) (π) :=
+k∈max⪯ (St ) λk
+t=1
+′
+
+Since ⪯′ adds precedence relations to ⪯, every π that respects ⪯′ also respects ⪯, and hence Π⪯ ⊆ Π⪯ . We consider
+′
+′
+separately the cases π ∈ Π⪯ and π ∈ Π⪯ \ Π⪯ .
+′
+
+First, suppose π ∈ Π⪯ . In this case, the added relations j ≺ i for all j ∈ max⪯ ([n]) \ {i} force i to be the last element in
+π, i.e., πn = i. Hence we can write
+!
+!
+n−1
+Y | max⪯ (St )|λπ
+| max⪯ ([n])|λi
+t
+(⪯,λ)
+P
+w
+(π) =
+· P
+k∈max⪯ (St ) λk
+k∈max⪯ ([n]) λk
+t=1
+→
+
+n−1
+Y
+
+| max (S )|λ
+P ⪯ t πt ,
+k∈max⪯ (St ) λk
+t=1
+
+as λi → ∞, since i ∈ max⪯ ([n]) implies
+| max⪯ ([n])|λi
+| max ([n])|λi
+P
+P ⪯
+=
+→ 1.
+λ
+λ
++
+i
+k∈max⪯ ([n]) k
+k∈max⪯ ([n])\{i} λk
+12
+
+(12)
+
+Priority-Aware Shapley Value
+′
+
+′
+
+On the other hand, the unnormalized weight for p(⪯ ,λ ) is
+w
+
+(⪯′ ,λ′ )
+
+n−1
+Y
+
+| max⪯′ (St )|λ′πt
+P
+′
+k∈max⪯′ (St ) λk
+t=1
+
+(π) =
+
+!
+
+| max⪯′ ([n])|λ′i
+P
+′
+k∈max⪯′ ([n]) λk
+
+·
+
+!
+.
+
+(13)
+
+Because πn = i, for every t ∈ {1, . . . , n − 1} the remaining set St does not contain i. By construction of ⪯′ , the only
+new relations are of the form j ≺ i for j ∈ max⪯ ([n]) \ {i}, which do not affect the admissible sets once i is removed.
+Therefore, for t ∈ [n − 1],
+max
+(St ) = max(St ).
+′
+⪯
+
+′
+
+⪯
+
+we have λ′j = λj for all j ̸= i, and since πt ̸= i for t ∈ [n − 1], it follows that λ′πt = λπt
+
+Moreover, by the definition of λ
+for all t ∈ [n − 1]. Hence the first product term in (13) coincides with the limit in (12).
+
+Finally, under ⪯′ the element i is the unique maximal element of [n], i.e., max⪯′ ([n]) = {i}. Thus the second factor in (13)
+′
+equals 1. Combining these observations, for π ∈ Π⪯ , we obtain
+′
+
+′
+
+lim w(⪯,λ) (π) = w(⪯ ,λ ) (π).
+
+λi →∞
+
+(14)
+
+′
+
+Next, consider the case that π ∈ Π⪯ \ Π⪯ . In this case, π respects ⪯ but violates at least one of the additional relations
+defining ⪯′ . Let t⋆ be the step such that πt⋆ = j. Then i ∈ St⋆ since i has not been removed before step t⋆ . Moreover,
+since i, j ∈ max⪯ ([n]), both are maximal whenever they are present, and hence
+{i, j} ⊆ max(St⋆ ).
+⪯
+
+Therefore, the t⋆ -th factor in w(⪯,λ) (π) satisfies
+| max⪯ (St⋆ )|λj
+| max⪯ (St⋆ )|λj
+P
+≤
+.
+λi + λ j
+k∈max⪯ (St⋆ ) λk
+All other factors in the product defining w(⪯,λ) (π) are bounded above by | max⪯ (St )| and do not diverge with λi . Hence
+there exists a constant C(π) < ∞ which is independent of λi such that
+w(⪯,λ) (π) ≤ C(π) ·
+
+λj
+→ 0.
+λi + λj
+
+as λi → ∞.
+Let Z(λi ) :=
+
+P
+
+π∈Π⪯ w
+
+(⪯,λ)
+
+(π) and Z ′ :=
+
+(⪯′ ,λ′ )
+
+(π). Since Π⪯ is finite, by (14) and (15) we have
+X
+X
+Z(λi ) =
+w(⪯,λ) (π) +
+w(⪯,λ) (π)
+P
+
+π∈Π⪯′ w
+
+π∈Π⪯′
+
+→
+
+X
+
+π∈Π⪯ \Π⪯′
+′
+
+′
+
+w(⪯ ,λ ) (π) + 0
+
+π∈Π⪯′
+′
+
+=: Z > 0.
+′
+
+Therefore, for any π ∈ Π⪯ ,
+′
+
+p(⪯,λ) (π) =
+
+′
+
+′
+′
+w(⪯,λ) (π)
+w(⪯ ,λ ) (π)
+→
+= p(⪯ ,λ ) (π),
+′
+Z(λi )
+Z
+
+′
+
+while for any π ∈ Π⪯ \ Π⪯ ,
+p(⪯,λ) (π) =
+
+w(⪯,λ) (π)
+→ 0,
+Z(λi )
+
+as λi → ∞. This completes the proof.
+
+13
+
+(15)
+
+Priority-Aware Shapley Value
+
+B.2. Proof of Proposition 3.14
+To prove Proposition 3.14, we first introduce two useful lemmas. Lemma B.1 shows that, under an ordered-partition
+precedence relation, the induced order distribution factorizes into the product of within-block distributions. This factorization
+allows us to localize the limiting argument to the single block B in which the weights are rescaled, while the contributions
+from all other blocks remain unchanged. Lemma B.2 establishes the basic limiting mechanism in the absence of precedence
+constraints. In particular, sending the weights of a subset G to infinity forces G to form a late block in the induced order
+distribution. The proofs of Lemmas B.1 and B.2 are given in Appendices B.2.1 and B.2.2, respectively.
+Lemma B.1 (Blockwise factorization under ordered partitions). Suppose a poset ([n], ⪯) is induced by an ordered partition
+(B1 , . . . , Bm ). Let π ∈ Π⪯ , and for each ℓ ∈ [m] let πBℓ denote the relative order of players in Bℓ induced by π. Let λBℓ
+be the restriction of λ to Bℓ , and let ⪯Bℓ denote the trivial partial order on Bℓ . Then the priority-aware distribution p(⪯,λ)
+admits the factorization
+m
+Y
+p(⪯,λ) (π) =
+p(⪯Bℓ ,λBℓ ) (πBℓ ),
+(16)
+ℓ=1
+
+where each factor on the right-hand side is the priority-aware distribution on the player set Bℓ under the trivial precedence
+relation.
+Lemma B.2. Suppose a poset ([n], ⪯) is trivial in the sense that there is no pair i, j ∈ [n] such that i ̸= j and i ≺ j, i.e. no
+edge in an induced DAG. Fix a nonempty subset G ⊆ [n] and fix weights (λj )j /∈G . For i ∈ G set λi = λ̄ and let λ̄ → ∞.
+Let ⪯′ be the partial order induced by the ordered partition ([n] \ G, G). Then, for any λ′ satisfying λ′j = λj for all j ∈
+/ G,
+′
+e
+e
+λi = λ for i ∈ G with arbitrary λ > 0, and for every π ∈ Π,
+( ′ ′
+′
+p(⪯ ,λ ) (π) if π ∈ Π⪯ ,
+(⪯,λ)
+lim p
+(π) =
+λ̄→∞
+0
+otherwise.
+Now we provide the proof of Proposition 3.14.
+Proof of Proposition 3.14. By Lemma B.1, for any π ∈ Π⪯ ,
+p(⪯,λ) (π) =
+
+m
+Y
+
+p(⪯Bℓ ,λBℓ ) (πBℓ ).
+
+ℓ=1
+
+All factors with Bℓ ̸= B are constant in λ̄, so it suffices to analyze the single factor on B.
+Applying Lemma B.2 to the block-B factor yields
+(
+(⪯B ,λB )
+
+lim p
+λ̄→∞
+
+(πB ) =
+
+′
+
+′
+
+′
+
+if πB ∈ Π⪯B ,
+otherwise,
+
+p(⪯B ,λB ) (πB )
+0
+
+with ⪯′B induced by (B \ G, G) and λ′B agreeing with λB on B \ G while taking an arbitrary common positive weight on
+G.
+′
+
+′
+
+Now observe that π ∈ Π⪯ holds if and only if π ∈ Π⪯ and πB ∈ Π⪯B . Recalling Lemma B.1 again for (⪯′ , λ′ ) and
+combining it with the previous results gives, for every π ∈ Π,
+( ′ ′
+′
+p(⪯ ,λ ) (π) if π ∈ Π⪯ ,
+(⪯,λ)
+lim p
+(π) =
+λ̄→∞
+0
+otherwise,
+which completes the proof.
+B.2.1. P ROOF OF L EMMA B.1
+Proof. By Proposition 3.2, for π ∈ Π⪯ ,
+p(⪯,λ) (π) =
+
+n
+Y
+
+λπt
+P
+
+t=1
+
+14
+
+k∈max⪯ (St ) λk
+
+.
+
+(17)
+
+Priority-Aware Shapley Value
+
+For each ℓ ∈ [m], define
+Iℓ (π) := {t ∈ [n] : πt ∈ Bℓ }.
+Since π respects the ordered-partition precedence, each Iℓ (π) is a contiguous interval and {Iℓ (π)}m
+ℓ=1 partitions [n].
+Fix ℓ ∈ [m] and take any t ∈ Iℓ (π). Then St contains no elements from blocks later than Bℓ and satisfies St ∩ Bℓ ̸= ∅.
+Hence the admissible set at step t is exactly the remaining players in Bℓ :
+max(St ) = St ∩ Bℓ ,
+
+t ∈ Iℓ (π).
+
+⪯
+
+(18)
+
+Substituting (18) into (17) and regrouping terms gives
+p(⪯,λ) (π) =
+
+m
+Y
+
+λπt
+
+Y
+P
+
+k∈St ∩Bℓ λk
+
+ℓ=1 t∈Iℓ (π)
+
+.
+
+(19)
+
+It remains to identify each product inside with the priority-aware distribution on the block Bℓ under trivial precedence. By
+Proposition 3.2 applied to (Bℓ , ⪯Bℓ ), the corresponding distribution satisfies, for ρ ∈ Π⪯Bℓ ,
+|Bℓ |
+
+p(⪯Bℓ ,λBℓ ) (ρ) =
+
+Y
+
+(λBℓ )ρr
+,
+k∈Tr (λBℓ )k
+
+(20)
+
+P
+r=1
+
+where Tr = {ρ1 , . . . , ρr }. Taking ρ = πBℓ and matching Tr with St ∩ Bℓ along t ∈ Iℓ (π) yields
+λπt
+
+Y
+
+= p(⪯Bℓ ,λBℓ ) (πBℓ ).
+
+P
+
+k∈St ∩Bℓ λk
+
+t∈Iℓ (π)
+
+Plugging this into (19) proves the claim.
+B.2.2. P ROOF OF L EMMA B.2
+Proof. Since the poset ([n], ⪯) is trivial, Π⪯ = Π and max⪯ (S) = S for all S ⊆ [n]. Furthermore, since a trivial poset
+is also an ordered partition, by Proposition 3.2, the priority-aware distribution coincides with pW SV in (3). Hence, the
+distribution takes the form
+n
+Y
+λ
+P πt
+p(⪯,λ) (π) =
+.
+(21)
+k∈St λk
+t=1
+On the other hand, under the modified poset ([n], ⪯′ ) induced by the ordered partition ([n] \ G, G), the admissible set is
+(
+S ∩ G, if S ∩ G ̸= ∅,
+max
+(S) =
+⪯′
+S,
+if S ∩ G = ∅,
+since all elements of [n] \ G precede all elements of G. Therefore, again by Proposition 3.2, the corresponding priority-aware
+distribution satisfies
+′
+
+′
+
+p(⪯ ,λ ) (π) =
+
+n
+Y
+
+λ′πt
+′
+k∈max⪯′ (St ) λk
+
+P
+t=1
+
+
+
+n−|G|
+
+=
+
+Y
+
+ 
+
+λ′πt
+′
+k∈St λk
+
+P
+t=1
+
+
+
+n−|G|
+
+=
+
+Y
+
+′
+k∈St λk
+
+t=1
+
+·
+
+′
+
+e for i ∈ G.
+for π ∈ Π⪯ . The last line follows from λ′i = λ
+15
+
+
+
+λ′πt
+′
+k∈St ∩G λk
+
+P
+t=n−|G|+1
+
+ 
+
+λ′πt
+P
+
+·
+
+n
+Y
+
+n
+Y
+t=n−|G|+1
+
+
+
+
+1
+
+|St ∩ G|
+
+(22)
+
+Priority-Aware Shapley Value
+′
+
+Now consider the case of π ∈ Π⪯ . Then since all elements of [n] \ G appear before all elements of G in π, we also can
+decompose the probability from the original poset in (21):
+
+ 
+
+n−|G|
+n
+Y
+Y
+λ
+λ
+·
+,
+P πt
+P πt
+(23)
+p(⪯,λ) (π) = 
+λ
+λ
+k
+k
+k∈S
+k∈S
+t
+t
+t=1
+t=n−|G|+1
+
+In addition, at every step t ∈ {n − |G| + 1, . . . , n}, we have λπt = λ̄ and St ∩ G ̸= ∅. This yields
+λ πt
+P
+
+k∈St λk
+
+=
+
+1
+λ̄
+P
+→
+,
+|St ∩ G|
+|St ∩ G|λ̄ + k∈St \G λk
+
+as λ̄ → ∞, which makes the limit of the second term in (23) coincide with the second term in (22). Furthermore, since
+λ′i = λi for i ∈ [n] \ G, this proves
+′
+′
+lim p(⪯,λ) (π) = p(⪯ ,λ ) (π),
+λ̄→∞
+⪯′
+
+for π ∈ Π .
+′
+
+Next, suppose that π ∈
+/ Π⪯ . Then there exist i ∈ G and j ∈ [n] \ G such that i appears before j in π. Let t⋆ be a step such
+⋆
+that πt = j and i ∈ St⋆ . Then the t⋆ -th factor satisfies
+λj
+P
+
+k∈St⋆ λk
+
+≤
+
+λj
+λj
+→ 0,
+=
+λi
+λ̄
+
+as λ̄ → ∞, since λi = λ̄. All other factors are bounded above by 1, hence p(⪯,λ) (π) → 0 as λ̄ → ∞.
+
+C. Proofs of Main Theoretical Results
+C.1. Proof of Theorem 3.8
+We first recall a classical characterization of random order values. The following lemma is useful for the main proof.
+Lemma C.1 (Axiomatization of ROV). A value ψ is ROV if and only if it satisfies axioms E + L + NP + M.
+We defer the proof of the lemma above to standard references (See Theorem 2 in Derks (2005)). The proof of Theorem 3.8
+is as follows:
+Proof. Assume ψ satisfies E +L + NP + M + MS. By Lemma C.1, ψ is an ROV, i.e., there exists a distribution p on Π such
+that (1) holds. It therefore suffices to show that p(π) = 0 for all π ∈ Π \ Π⪯ if and only if ψ satisfies MS.
+First, we will show the forward direction. Assume that p(π) = 0 for all π ∈ Π \ Π⪯ . Choose any feasible set T ∈ S ⪯ and
+consider the corresponding elementary game uT . For each i ∈ [n], using (1) and the definition of uT , we can show
+
+
+ψi (uT ) = Eπ∼p uT (π i ∪ {i}) − uT (π i )
+h
+i
+= Eπ∼p 1{T ⊈ π i , T ⊆ π i ∪ {i}}
+
+= Pπ∼p i is last for T in π
+X
+=
+p(π).
+(24)
+{π:i is last for T in π}
+
+In particular, if i ∈
+/ max⪯ (T ), then no linear extension π ∈ Π⪯ can have i as the last element of T . Since p is supported on
+⪯
+Π , the sum in (24) is zero and hence ψi (uT ) = 0. This verifies MS.
+Conversely, suppose there exists π ⋆ ∈ Π \ Π⪯ with p(π ⋆ ) > 0. Then π ⋆ violates the precedence relation, so there exist a
+violating pair of players i, j ∈ [n] with i ≺ j but π ⋆ (j) < π ⋆ (i). Let P(j) := {i ∈ [n] : i ≺ j} denote the predecessor set
+of j under ⪯ and let k ∈ P(j) be a predecessor that appears latest among P(j) in π ⋆ . Define
+T := P(j) ∪ {j}.
+16
+
+Priority-Aware Shapley Value
+
+By construction, T is feasible, and k ̸∈ max⪯ (T ) since k ≺ j ∈ T . Moreover, under π ⋆ , every element of T \ {k} appears
+before k, so k is last for T in π ⋆ . Therefore, (24) implies
+ψk (uT ) ≥ p(π ⋆ ) > 0,
+which contradicts MS. Hence no such π ⋆ can have positive probability, and this completes the proof.
+
+C.2. Proof of Theorem 3.12
+Proof. Since p is PROV, it is supported on Π⪯ . Assume p admits the SCF form (6):
+p(π) ∝
+
+n
+Y
+
+s⪯ (St )c⪯,λ (πt ; St ),
+
+t=1
+
+for π ∈ Π⪯ , where
+
+P
+
+i∈max⪯ (St ) c⪯,λ (i; St ) = 1.
+
+First, by WP, for every feasible set S and every i, j ∈ max⪯ (S),
+λi
+c⪯,λ (i; S)
+=
+.
+c⪯,λ (j; S)
+λj
+Together with
+
+P
+
+i∈max⪯ (S) c⪯,λ (i; S) = 1, for i ∈ max⪯ (S), this implies
+
+λi
+
+c⪯,λ (i; S) = P
+
+k∈max⪯ (S) λk
+
+.
+
+(25)
+
+Now, without loss of generality, assume λi = 1 for all i ∈ [n]. Then (25) gives c⪯,λ (i; S) = 1/| max⪯ (S)|, so for π ∈ Π⪯ ,
+p(π) ∝
+
+n
+Y
+
+s⪯ (St )
+.
+|
+max
+⪯ (St )|
+t=1
+
+(26)
+
+By EWU, p must be uniform on Π⪯ under constant weights. Hence the product in (26) is a constant independent of π ∈ Π⪯ :
+n
+Y
+
+s⪯ (St )
+= K,
+| max⪯ (St )|
+t=1
+
+(27)
+
+for all π ∈ Π⪯ .
+For general λ, combining SCF with (25) yields, for π ∈ Π⪯ ,
+p(π) ∝
+
+=
+∝
+
+n
+Y
+
+s⪯ (St ) P
+
+t=1
+n
+Y
+
+λπt
+k∈max⪯ (St ) λk
+
+s⪯ (St )
+|
+max
+⪯ (St )|
+t=1
+
+!
+·
+
+n
+Y
+λ | max⪯ (St )|
+Pπt
+k∈max⪯ (St ) λk
+t=1
+
+!
+
+n
+Y
+
+λ | max⪯ (St )|
+Pπt
+.
+k∈max⪯ (St ) λk
+t=1
+
+The last proportionality is due to (27), and this proves that p is PASV.
+P
+Conversely, the PASV distribution (4) is realized in the SCF class by taking c⪯,λ (i; S) = λi / k∈max⪯ (S) λk and an
+appropriate state factor, so WP holds by construction. If λi = 1 for i ∈ [n], each factor in (4) reduces to 1, so PASV is
+uniform on Π⪯ and EWU holds.
+17
+
+Priority-Aware Shapley Value
+
+C.3. Proof of Proposition 3.1
+Proof. Without loss of generality, assume λi = 1 for i ∈ [n]. For any π ∈ Π⪯ , the PASV weight (4) satisfies
+p(⪯,λ) (π) ∝
+
+n
+n
+Y
+Y
+| max⪯ (St )|
+λ | max⪯ (St )|
+Pπt
+=
+= 1.
+λ
+| max⪯ (St )|
+k
+k∈max⪯ (St )
+t=1
+t=1
+
+Hence p(⪯,λ) is uniform over Π⪯ , which coincides with pPSV .
+C.4. Proof of Proposition 3.2
+Proof. Assume ⪯ is induced by an ordered partition (B1 , . . . , Bm ). Fix any π ∈ Π⪯ and let St = {π1 , . . . , πt }. Under an
+ordered partition, at each step the admissible set max⪯ (St ) consists exactly of the players in the earliest block that still has
+remaining elements. In particular, if at some step t the current active block has r remaining elements, then | max⪯ (St )| = r,
+regardless of which specific element is chosen within that block. Therefore,
+n
+Y
+
+| max(St )| =
+⪯
+
+t=1
+
+m
+Y
+
+|Bℓ |!,
+
+ℓ=1
+
+which is a constant independent of π ∈ Π⪯ .
+Using (4), for any π ∈ Π⪯ we can write
+n
+Y
+λ | max⪯ (St )|
+Pπt
+k∈max⪯ (St ) λk
+t=1
+!
+n
+n
+Y
+Y
+P
+=
+| max(St )| ·
+
+p(⪯,λ) (π) ∝
+
+∝
+
+⪯
+
+t=1
+n
+Y
+
+t=1
+
+λ πt
+
+P
+t=1
+
+k∈max⪯ (St ) λk
+
+λ πt
+
+!
+
+k∈max⪯ (St ) λk
+
+,
+
+Qn
+where the last proportionality uses that t=1 | max⪯ (St )| is constant over Π⪯ . The remaining product is exactly the
+weighted Shapley distribution pWSV (π) under the ordered-partition precedence. Hence p(⪯,λ) (π) = pWSV (π) for all
+π ∈ Π⪯ .
+C.5. Proof of Lemma 4.1
+Proof. Fixing a poset ([n], ⪯) and weights λ, for a given π ∈ Π⪯ let π ′ ∈ Π⪯ be obtained by swapping an incomparable
+pair (πk , πk+1 ) in π. Then, the probability ratio of π and π ′ under p(⪯,λ) is given by:
+"
+,
+#
+n
+λπt | max⪯ (St )|
+p(⪯,λ) (π ′ ) Y λπt′ | max⪯ (St′ )|
+P
+P
+=
+,
+′
+p(⪯,λ) (π)
+j∈max⪯ (St′ ) λj
+i∈max⪯ (St ) λi
+t=1
+where St′ = {π1′ , . . . , πt′ }. Then, since πt′ = πt for all t ∈
+/ {k, k + 1} and St′ = St for t ̸= k, it remains to compare the
+′
+′
+factors only at t = k and t = k + 1. For t = k + 1, we have Sk+1
+= Sk+1 , and hence max⪯ (Sk+1
+) = max⪯ (Sk+1 ),
+which gives
+,
+′
+′
+λπk+1
+| max⪯ (Sk+1
+)|
+λπk+1 | max⪯ (Sk+1 )|
+λπk
+P
+P
+=
+.
+λπk+1
+j∈max⪯ (S ′ ) λj
+i∈max⪯ (Sk+1 ) λi
+k+1
+
+For the t = k factor, using πk′ = πk+1 gives
+λπ′ | max⪯ (Sk′ )|
+Pk
+j∈max⪯ (S ′ ) λj
+k
+
+,
+
+P
+λπk+1 | max⪯ (Sk′ )|
+λπk | max⪯ (Sk )|
+i∈max⪯ (Sk ) λi
+P
+=
+.
+·
+·P
+λπk | max⪯ (Sk )|
+i∈max⪯ (Sk ) λi
+j∈max⪯ (S ′ ) λj
+k
+
+18
+
+Priority-Aware Shapley Value
+
+Multiplying the two ratios above cancels the weight ratio of πk and πk+1 , yielding
+
+P
+p(⪯,λ) (π ′ )
+i∈max⪯ (Sk ) λi /| max⪯ (Sk )|
+
+= P
+,
+′
+p(⪯,λ) (π)
+j∈max⪯ (S ′ ) λj /| max⪯ (Sk )|
+k
+
+which proves the claim.
+
+D. Simulation Studies
+The experiments in Section 5 demonstrate PASV in two applied settings, where the utility evaluation itself is tied to a
+downstream learning task. In this section, we complement those experiments with controlled simulation studies that isolate
+the computational and statistical behavior of the PASV estimators. The first set of simulations studies the direct Monte Carlo
+estimator, separating the behavior of the MCMC sampler from the accuracy and cost of the retained samples. The second set
+studies a proxy-based variant that uses a quadratic regression approximation to reduce Monte Carlo error under the same
+total sampling budget.
+D.1. Estimation Accuracy
+The basic PASV estimator has two stages. The burn-in stage runs the adjacent-swap M-H chain until its distribution is close
+to the target distribution p(⪯,λ) , but does not evaluate the utility. The Monte Carlo stage keeps thinned samples from the
+chain and averages the marginal contributions induced by those sampled linear extensions. Accordingly, we first examine
+how quickly the chain mixes, and then evaluate how the retained sample size affects the accuracy and computational cost of
+PASV estimation.
+D.1.1. M IXING T IME A NALYSIS OF MCMC S AMPLER
+We first study the mixing behavior of the adjacent-swap M-H sampler. In this experiment, we investigate whether the
+sampler itself becomes a computational bottleneck when the target distribution is no longer uniform over linear extensions
+because of non-uniform priority weights. For a sampled linear extension π, write i ≺π j if player i appears before player j
+in π. Let Pπt0 denote the distribution of the chain after t M-H iterations initialized at π0 , and let P ⋆ denote the stationary
+distribution. We measure mixing through the pairwise-order discrepancy
+Dt = max Ptπ0 (i ≺π j) − P⋆ (i ≺π j) .
+i,j∈[n]
+
+(28)
+
+The empirical mixing time is defined as the earliest t such that Dt < 1/4.
+We use four synthetic poset families from Talvitie et al. (2017), each with two sub-settings: AveDeg with parameters 2 and
+4, MaxInDeg with parameters 2 and 4, GridTree with parameters 2 and 4, and Bipartite with parameters 0.2 and 0.5. The
+AveDeg(k) family adds each forward arc a → b with a < b independently with probability k/(n − 1), yielding sparse
+random DAGs with controlled average degree. The MaxInDeg(k) family constructs the DAG sequentially: for each vertex b,
+it draws the number of parents from {0, . . . , min(k, b − 1)} and chooses that many parents among earlier vertices. The
+GridTree(k) family starts from a directed k × k grid and repeatedly attaches new directed k × k grids along randomly
+selected sides, preserving the grid orientation, until the graph contains at least n vertices. The Bipartite(p) family splits the
+vertices into two layers and independently adds each left-to-right arc with probability p. The number of players ranges over
+n ∈ {5, 10, . . . , 25}. To test the effect of soft priorities, we include the uniform-weight baseline and non-uniform settings
+where priority weights are drawn independently as λi ∼ Unif(1, R) with R ∈ {4, 16, 64, 256, 1024}. For each setting, Pπt0
+is estimated using 10,000 independent chains, while the stationary pairwise probabilities P ⋆ (i ≺π j) are computed by
+exact dynamic programming, adapting the counting approach of Kangas et al. (2016) to the non-uniform target distribution.
+Concretely, for a feasible subset S, let M (S) = max⪯ (S) and define the backward-removal weight
+λx |M (S)|
+w(x; S) = P
+,
+j∈M (S) λj
+
+x ∈ M (S).
+
+The unweighted extension count is then replaced by a weighted mass Z(S) satisfying
+X
+Z(S) =
+w(x; S)Z(S \ {x}),
+Z(∅) = 1,
+x∈M (S)
+
+19
+
+(29)
+
+Priority-Aware Shapley Value
+
+Algorithm 2 Exact pairwise probability under the PASV target
+Input: poset ([n], ⪯); priority weights λ; ordered pair (a, b).
+Output: P ⋆ (a ≺π b) under p(⪯,λ) .
+Compute the transitive closure of ⪯.
+If a ⪯ b, return 1; if b ⪯ a, return 0.
+Save Z(S) over feasible subsets using (29).
+Save Fη (S) using (30).
+return the value in (31).
+
+Emprical Mixing Time
+
+AveDeg (2)
+
+MaxInDeg (2)
+
+104
+
+104
+
+103
+
+103
+
+102
+
+100
+
+MaxInDeg (4)
+
+104
+
+104
+
+104
+
+103
+
+103
+
+103
+
+102
+
+102
+
+102
+
+101
+
+101
+
+5
+
+10
+
+n
+
+15 20 25
+Uniform
+
+100
+
+102
+
+101
+
+101
+
+100
+
+103
+
+102
+
+102
+
+101
+
+Bipartite (0.2)
+104
+
+103
+
+AveDeg (4)
+
+Emprical Mixing Time
+
+GridTree (2)
+104
+
+5
+
+10
+
+R=4
+
+R = 16
+
+n
+
+15 20 25
+R = 64
+
+100
+
+GridTree (4)
+
+Bipartite (0.5)
+104
+103
+102
+
+5
+
+10
+
+R = 256
+
+R = 1024
+
+n
+
+15 20 25
+n2
+
+101
+
+5
+
+4/ 2 n3logn
+
+10
+
+n
+
+15 20 25
+
+Figure 8. Empirical mixing time of the adjacent-swap M-H chain. Four synthetic poset families from Talvitie et al. (2017) are considered,
+each with two sub-settings: AveDeg, MaxInDeg, GridTree, and Bipartite. Both axes are log-scaled, so the slope indicates the exponent c
+iid
+in an empirical O(nc ) rate. Priority weights include the uniform baseline and λi ∼ Unif(1, R) with R ∈ {4, 16, 64, 256, 1024}. The
+2
+solid black line shows n , and the dashed black line shows the theoretical worst-case reference π42 n3 log n.
+
+For an ordered pair (a, b), the same backward-removal recursion is augmented with event states. Let Fη (S) denote the
+unnormalized mass for the event a ≺π b when η = 0 means undecided, η = 1 means already true, and η = 2 means already
+false. For incomparable a and b, the recursion is
+F1 (S) = Z(S),
+
+F2 (S) = 0,
+
+
+F1 (S \ {x}),
+X
+F0 (S) =
+w(x; S) F2 (S \ {x}),
+
+
+x∈M (S)
+F0 (S \ {x}),
+
+x = b,
+x = a,
+x∈
+/ {a, b}.
+
+(30)
+
+The desired stationary pairwise probability is then
+P ⋆ (a ≺π b) =
+
+F0 ([n])
+.
+Z([n])
+
+(31)
+
+Algorithm 2 summarizes the resulting computation for one ordered pair; applying it to all unordered pairs gives the matrix
+of stationary pairwise probabilities used in (28).
+Figure 8 shows that the empirical mixing time is much closer to the O(n2 ) behavior reported by Talvitie et al. (2017) than
+to the worst-case O(n3 log n) reference line. The results also indicate that the non-uniformity induced by λ has limited
+effect on the mixing time in these settings. Thus, for the regimes considered here, the MCMC burn-in is not the dominant
+computational cost; the main cost comes from evaluating U (S) along retained permutations.
+20
+
+Priority-Aware Shapley Value
+
+D.1.2. A PPROXIMATION E RROR OF PASV
+We next study the accuracy of the Monte Carlo estimator after permutations have been sampled. Unlike the application
+experiments, this simulation uses utility functions for which the true PASV can be computed in closed form. This allows us
+to measure estimation error directly rather than relying on qualitative agreement with domain expectations.
+The utility is a sum-of-unanimity (SOU) game,
+U (S) =
+
+d
+X
+
+αj 1{Tj ⊆ S},
+
+Tj ⊆ [n],
+
+(32)
+
+j=1
+iid
+
+where αj ∼ Unif(0.5, 1.5). SOU games provide a common synthetic benchmark in cooperative game experiments because
+they combine elementary unanimity components while preserving analytically tractable values; recent Shapley-value
+benchmarks also use this class of games (Li & Yu, 2024; Lee et al., 2025). We consider two synthetic scenarios. In Scenario
+1, the player set is partitioned into K equal-sized blocks {Bk }K
+k=1 . Treating blocks as nodes, we add an edge Bk → Bℓ
+with probability 0.8 for k < ℓ, and then set i ⪯ j for players i ∈ Bk , j ∈ Bℓ whenever this block edge is present. Here
+λ ≡ 1, d = K, and Tj = Bj , so the true value is ψi (U ) = αj /|Tj | for i ∈ Tj . In Scenario 2, the DAG is the ordered
+partition B1 ≺ · · · ≺ BK . We consider three weight settings, λ ≡ 1, λi ∼ Unif(1, 10), and λi ∼ Unif(1, 100). In this
+scenario, d = n2 and each Tj is sampled uniformly from 2[n] . For any nonempty T , define r(T ) = max{k : T ∩ Bk ̸= ∅}
+and MT = T ∩ Br(T ) . The closed-form PASV contribution of the nonconstant SOU terms is then
+ψi (U ) =
+
+X
+
+αj P
+
+j:i∈MTj
+
+λi
+
+r∈MTj λr
+
+.
+
+(33)
+
+Both scenarios use n ∈ {128, 512, 2048, 8192}, K = n/16, and equal-sized blocks. The maximum number of retained
+Monte Carlo samples is NMC = 104 , with burn-in 100,000 and thinning 103 . When the same subset S is encountered
+repeatedly, we cache U (S) and reuse the stored value. The four reported cases are Scenario 1 with λ ≡ 1, and Scenario 2
+with λ ≡ 1, λi ∼ Unif(1, 10), and λi ∼ Unif(1, 100). For m retained permutations, we report the absolute relative error
+ARE(m) =
+
+∥ψb(m) − ψ ⋆ ∥2
+,
+∥ψ ⋆ ∥2
+
+(34)
+
+where ψ ⋆ is the closed-form PASV and ψb(m) is the estimate based on m retained permutations. We also report the area
+under the convergence curve,
+100
+1 X
+AUCC =
+ARE(100ℓ),
+(35)
+100
+ℓ=1
+
+the number of unique utility evaluations, the runtime spent on utility evaluations, and the runtime spent on all other
+operations.
+Figure 9 shows that the basic estimator approximates the true PASV well with a few hundred retained permutations across
+the simulated settings. The experiment also illustrates how the computational burden should be interpreted in applications.
+The Monte Carlo stage nominally traverses O(NMC n) prefix subsets, but repeated subsets can be cached, so the number of
+unique utility calls can be substantially smaller. When a downstream utility call is expensive, the total runtime can therefore
+be decomposed into the number of unique utility evaluations times the cost per evaluation, plus the sampler and bookkeeping
+overhead shown separately in the figure. The results indicate that the estimator remains practical for player sets with several
+thousand players in these controlled benchmarks.
+
+21
+
+Priority-Aware Shapley Value
+
+Case
+
+Scenario 1 (
+
+1)
+
+Scenario 2 (
+
+n = 128
+
+1)
+
+Scenario 2 (
+
+n = 512
+
+Unif(1, 10))
+
+Scenario 2 (
+
+n = 2048
+
+Unif(1, 100))
+n = 8192
+
+ARE
+
+100
+10 1
+2500 5000 7500 10000
+NMC
+
+0
+
+2500 5000 7500 10000
+NMC
+
+0
+
+2500 5000 7500 10000
+NMC
+
+0
+
+2500 5000 7500 10000
+NMC
+
+AUCC
+
+0
+
+10 1
+
+Runtime for Others (s)
+
+Runtime for Utility (s)
+
+# of Unique Utility Calls
+(Scenario 2)
+
+# of Unique Utility Calls
+(Scenario 1)
+
+Case
+
+Case
+
+15
+
+30
+
+10
+
+20
+
+5
+
+10
+
+0
+
+0
+1e5
+
+2500 5000 7500 10000
+NMC
+
+3
+2
+1
+0
+
+0
+
+2500 5000 7500 10000
+NMC
+
+0
+8
+6
+4
+2
+0
+
+0
+1e5
+
+Case
+
+2500 5000 7500 10000
+NMC
+
+100
+
+400
+
+50
+
+200
+
+0
+
+0
+1e6
+
+2500 5000 7500 10000
+NMC
+
+0.0
+
+0
+1e6
+
+2500 5000 7500 10000
+NMC
+
+1.0
+
+0.5
+2500 5000 7500 10000
+NMC
+
+0
+
+1.5
+
+1.0
+
+0
+
+Case
+
+0.5
+0
+
+2500 5000 7500 10000
+NMC
+
+0.0
+
+0
+
+2500 5000 7500 10000
+NMC
+
+100
+10 2
+10 4
+
+Case
+
+Case
+
+Case
+
+Case
+
+Case
+
+Case
+
+Case
+
+Case
+
+102
+101
+100
+
+Figure 9. Approximation quality and computational cost of the basic PASV Monte Carlo estimator. The figure summarizes results across
+n, NMC , and the four cases described in Appendix D.1.2. The top two rows report ARE and AUCC, the middle rows report the number of
+unique utility evaluations, and the bottom rows separate utility-evaluation runtime from all other runtime. Utility values are cached and
+reused when the same subset is revisited.
+
+22
+
+Priority-Aware Shapley Value
+
+D.2. Proxy-Based Estimation Method
+The previous subsection studies the direct Monte Carlo estimator, which estimates PASV by repeatedly evaluating marginal
+contributions along sampled linear extensions. This approach is simple and broadly applicable, but its statistical efficiency
+can be limited when the utility function has systematic low-order structure that is not explicitly used. The proxy-based
+estimator studied here follows the proxy-plus-residual strategy of regression MSR (Witter et al., 2026): fit a tractable
+surrogate for the utility, compute or estimate the PASV of that surrogate, and use Monte Carlo only to correct the residual. Its
+surrogate model is related to regression-based Shapley estimators: a linear proxy corresponds to the KernelSHAP viewpoint
+(Lundberg & Lee, 2017; Covert & Lee, 2021), while including higher-order interaction terms follows the polynomial
+extension in PolySHAP (Fumagalli et al., 2026). We adapt these ideas to precedence-constrained PASV by using a quadratic
+proxy over incomparable pairs and by reusing each evaluated utility value when estimating multiple player-value coordinates,
+in the spirit of maximum sample reuse (Wang & Jia, 2023). The goal of this experiment is not to replace the direct estimator
+in all regimes, but to understand when a fitted proxy can reduce approximation error under a fixed computational budget.
+The proxy takes the form
+b (S) ≈ U (∅) +
+U
+
+X
+
+ai +
+
+i∈S
+
+X
+
+bij ,
+
+(36)
+
+{i,j}⊆S, i∥j
+
+where i ∥ j denotes that neither i ⪯ j nor j ⪯ i, and bij = bji . For pairs that are comparable in the DAG, the quadratic
+coefficient is set to zero. This choice keeps the proxy aligned with the precedence structure, since only incomparable pairs
+can vary in their relative sampled order. For this quadratic proxy, the PASV contribution has the closed form
+X
+b ) = ai +
+ψi (U
+qji bij ,
+qji := Pπ∼p(⪯,λ) (j ≺π i).
+(37)
+j:j̸=i, i∥j
+
+The estimator proceeds in three parts. First, the MCMC sampler is run to stationarity as in Algorithm 1. Second, sampled
+b by weighted least squares, and estimate the pairwise
+permutations and their prefix sets are used to evaluate U , fit U
+probabilities qji . Third, using linearity,
+b ) + ψ(U − U
+b ),
+ψ(U ) = ψ(U
+b ) with the direct Monte Carlo estimator.
+we estimate the residual term ψ(U − U
+We evaluate this proxy-based estimator on Scenario 2 from Appendix D.1.2 with λ ≡ 1. The player sizes are n ∈
+{256, 512, 1024, 2048}. The proxy-fitting budget is Ncoef = kn subsets with k ∈ {0, 1, 2, 5}, where k = 0 corresponds to
+the direct estimator without a proxy. The probability-estimation budget is Nprob = 100n, and the residual-correction Monte
+Carlo budget is NMC = 10,000 − Ncoef . We also vary ρ ∈ {0, 0.5, 1}, which controls the proportion of discovered quadratic
+terms included in the proxy. The corresponding computational costs decompose as follows. The MCMC component costs
+O(N n) for N iterations or samples. Utility evaluation costs O(Ncoef n) for proxy fitting plus O((N − Ncoef )n) for residual
+correction, hence O(N n) in total. The additional weighted least-squares proxy fit costs O(Ncoef d2 ), where d is the number
+of proxy coefficients and can be as large as O(n2 ).
+Figure 10 shows that the proxy can improve approximation accuracy when the proxy-fitting cost is not too large relative
+to the total budget. For n ≤ 512, the settings ρ ∈ {0.5, 1} consistently improve over the direct estimator under the same
+budget. The setting ρ = 0, which removes the quadratic terms, performs worst in this benchmark, indicating that pairwise
+terms are important for this non-uniform distribution over admissible orders. The case ρ = 0.5 often matches the accuracy
+of ρ = 1 while reducing overhead, making it a practical compromise in these simulations. For n ≥ 1024, the proxy budget
+becomes more consequential. When k ≤ 2, the proxy-based estimator still matches or improves on the direct estimator,
+whereas k = 5 can allocate too much of the budget to proxy fitting and make the direct estimator preferable.
+Figures 11 and 12 show the corresponding computational tradeoff. The extra proxy runtime grows with n and k, and ρ = 0.5
+has substantially smaller fitting cost than ρ = 1. Peak memory also increases with n, with the largest (n, ρ) = (2048, 1)
+cases requiring tens of GB during proxy construction. After the proxy has been fitted, the memory cost drops sharply and is
+much less sensitive to ρ. Overall, these results suggest that the proxy-based estimator is useful when moderate quadratic
+structure captures much of the utility variation, but its fitting budget and peak memory should be controlled for larger n.
+
+23
+
+Priority-Aware Shapley Value
+
+n = 256
+
+n = 512
+
+ARE
+4 × 10 1
+3 × 10 1
+
+k=1
+
+2 × 10 1
+
+n = 1024
+3 × 10 1
+
+2 × 10 1
+
+10 1
+
+2 × 10 1
+
+10 1
+
+k=2
+
+2 × 10 1
+
+3 × 10 1
+2 × 10 1
+
+10 1
+
+4 × 10 1
+
+2 × 10 1
+
+3 × 10 1
+2 × 10 1
+
+10 1
+
+3 × 10 1
+2 × 10 1
+
+k=5
+
+3 × 10 1
+
+10 1
+
+6 × 10 2
+
+n = 2048
+4 × 10 1
+
+3 × 10 1
+
+10 1
+2000 4000 6000 8000 10000
+
+N
+
+3 × 10 1
+
+2 × 10 1
+
+10 1
+
+6 × 10 2
+
+4 × 10 1
+
+4 × 10 1
+3 × 10 1
+
+2 × 10 1
+
+2 × 10 1
+2000 4000 6000 8000 10000
+
+N
+
+=0
+
+= 0.5
+
+2000 4000 6000 8000 10000
+
+N
+
+2000 4000 6000 8000 10000
+
+N
+
+=1
+
+Figure 10. Approximation error of the proxy-based estimator. ARE is plotted as the Monte Carlo budget increases. The black curve is
+the direct estimator, while colored curves use the quadratic regression proxy with different values of ρ. Rows correspond to k, where
+Ncoef = kn; points are absent when the available budget is smaller than the required proxy-fitting budget.
+
+24
+
+Priority-Aware Shapley Value
+
+Extra Runtime (s)
+
+n = 256
+
+n = 512
+
+n = 1024
+
+k=1
+
+101
+
+n = 2048
+102
+
+101
+100
+
+101
+
+10 1
+
+100
+
+101
+
+101
+
+102
+
+k=2
+
+101
+101
+
+100
+
+101
+101
+
+102
+
+k=5
+
+101
+
+102
+101
+
+100
+
+e
+n
+it
+Proxy Froxy Inferencity Estimatio
+il
+P
+Probab
+
+e
+n
+it
+Proxy Froxy Inferencity Estimatio
+il
+P
+Probab
+
+=0
+
+n = 256
+k=1
+
+500000
+
+k=2
+
+800000
+600000
+
+300000
+
+400000
+
+n = 512
+
+1.0
+
+1e6
+
+101
+e
+n
+it
+Proxy Froxy Inferencity Estimatio
+il
+P
+Probab
+
+=1
+
+n = 1024
+
+1.25
+
+0.8
+
+1.00
+
+0.6
+
+0.75
+
+0.4
+
+0.50
+
+200000
+
+1e6
+
+800000
+
+1.0
+
+400000
+
+600000
+
+0.8
+
+1.00
+
+300000
+
+400000
+
+0.6
+
+0.75
+
+0.4
+
+0.50
+
+500000
+
+200000
+
+200000
+
+1.25
+
+1e6
+
+800000
+
+1.0
+
+400000
+
+600000
+
+0.8
+
+1.00
+
+300000
+
+400000
+
+0.6
+
+0.75
+
+0.4
+
+0.50
+
+500000
+
+k=5
+
+= 0.5
+
+Unique Utility Calls
+
+400000
+200000
+
+e
+n
+it
+Proxy Froxy Inferencity Estimatio
+il
+P
+Probab
+
+200000
+200000
+2000 4000 6000 8000 10000
+2000 4000 6000 8000 10000
+
+N
+
+N
+
+1.25
+
+2000 4000 6000 8000 10000
+
+N
+
+1e6
+
+n = 2048
+
+1e6
+
+1e6
+
+2000 4000 6000 8000 10000
+
+N
+
+Figure 11. Extra runtime and unique utility evaluations of the proxy-based estimator. The top panel decomposes extra runtime into
+proxy fitting, proxy inference, and probability estimation. The bottom panel reports the number of unique utility evaluations. The unique
+utility evaluation curves coincide across k and ρ, because this quantity is driven by n and the fixed total budget rather than the proxy
+specification.
+
+25
+
+Priority-Aware Shapley Value
+
+Peak Memory during Proxy Fit (GB)
+
+n = 256
+
+n = 512
+
+n = 1024
+
+101
+6 × 100
+
+2 × 101
+
+2 × 100
+
+3 × 101
+
+4 × 100
+6 × 101
+
+4 × 100
+3 × 100
+
+101
+
+100
+
+2 × 100
+
+6 × 100
+
+2 × 100
+
+6 × 100
+
+3 × 101
+2 × 101
+
+4 × 100
+3 × 100
+
+101
+
+k=2
+
+k=1
+
+3 × 100
+100
+9 × 10 1
+8 × 10 1
+2 × 100
+
+n = 2048
+4 × 101
+
+4 × 101
+3 × 101
+2 × 101
+
+k=5
+
+4 × 100
+
+100
+Peak Memory during Proxy Fit
+
+2 × 100
+
+6 × 100
+
+Peak Memory during Proxy Fit
+
+=0
+
+= 0.5
+
+102
+
+Peak Memory during Proxy Fit
+
+6 × 101
+4 × 101
+3 × 101
+2 × 101
+
+Peak Memory during Proxy Fit
+
+=1
+
+Figure 12. Peak memory during proxy fitting. The plot uses the same grid layout as Figure 10 and reports peak memory in GB during the
+proxy-fitting step for ρ ∈ {0, 0.5, 1}.
+
+26
+
+Priority-Aware Shapley Value
+
+E. Experimental Details in Section 5.1
+All experiments were run at the Unity high-performance computing cluster, provided by the College of Arts and Sciences at
+The Ohio State University. Generative AI training and sampling in Section 5.1 used one NVIDIA V100 GPU with 32 GB
+VRAM per run. All other experiments were performed on CPU nodes with allocated resources fixed at 16 CPU cores and 32
+GB RAM per run, using various Intel Xeon processors.2
+E.1. Detailed Setup
+We provide additional implementation details for the data valuation experiments in Section 5.1. The random seed was fixed
+for dataset construction, and value estimation was replicated across 10 independent random seeds. We report the mean and
+one standard deviation across these runs.
+Utility was defined as the test accuracy of a k-NN classifier with Euclidean distance using k = 20. For CIFAR10, we used
+ImageNet-pretrained ResNet-18 features, extracting the 512-dimensional representation from the global average pooling
+output immediately before the final fully connected layer. Each CIFAR10 image was normalized using ImageNet statistics
+prior to feature extraction, and the resulting embeddings were ℓ2 -normalized.
+Provider datasets were constructed as follows. The Owner dataset was sampled from the original dataset with balanced
+class proportions. The Anchor dataset was obtained by applying geometric and optical augmentations to the Owner samples.
+Each augmentation parameter was sampled independently from a uniform distribution over the stated range.
+• Scaling in [0.95, 1.05]
+• Brightness in [0.7, 1.3] for MNIST, and in [0.8, 1.2] for CIFAR10
+• Contrast in [0.7, 1.3] for MNIST, and in [0.8, 1.2] for CIFAR10
+• Translation sampled independently in the horizontal and vertical directions, each by up to 1/32 of the image size.
+• Rotation in [−15◦ , 15◦ ] for MNIST
+• For MNIST, Gaussian blur with kernel size 3 and σ ∈ [0.5, 1.5].
+• For CIFAR10, horizontal flip with probability 0.5.
+For each Booster, we trained a class-conditional generative model on the Owner dataset, and also trained a second model on
+the Anchor-augmented version of the Owner dataset. We then sampled a class-balanced set of size n/2 from each model via
+label conditioning. Full generative model specifications are provided in Appendix E.2. The Copier dataset was formed by
+copying half of the Owner samples while preserving class balance, and likewise half of the Anchor samples. The Poisoner
+dataset was formed by taking half of the Owner samples with balanced class proportions and replacing each label with a
+uniformly sampled incorrect class label, and likewise for half of the Anchor samples.
+All values were estimated via Monte Carlo using NMC = 10,000 samples. For PASV, we sampled linear extensions using
+Algorithm 1 with burn-in B = 100,000 and thinning τ = 10,000. The index proposal sampler f was uniform over [n − 1].
+E.2. Model Configurations for Generative AIs
+For each generative model, we trained two separate class-conditional models, one using the original dataset and another
+using the Anchor-augmented version of the dataset. The resulting Booster dataset was formed by drawing n/2 samples from
+each of the two models, sampling uniformly across classes via label conditioning. All models were trained with Adam, using
+(β1 , β2 ) = (0, 0.9) for GAN and (β1 , β2 ) = (0.9, 0.999) otherwise. The following summarizes the model configurations
+used for each model.
+For GAN, we used a DCGAN-style architecture based on transposed convolutions. We trained the model using hinge loss.
+We used learning rates 10−4 for the generator and 2 · 10−4 for the discriminator. We used batch size 128 and trained for 40
+epochs on MNIST and 60 epochs on CIFAR10. The latent dimension was set to 128 for MNIST and 256 for CIFAR10.
+2
+
+Jobs could be placed on different nodes depending on cluster availability, so the specific CPU model varied across runs.
+
+27
+
+Priority-Aware Shapley Value
+
+For DDPM, we used a class-conditional UNet with base width 64 on MNIST and 128 on CIFAR10. We used a linear noise
+schedule with βstart = 10−4 and βend = 0.02, with T = 1000 diffusion steps. Training used learning rate 10−4 and batch
+size 64, for 30 epochs on MNIST and 200 epochs on CIFAR10. Sampling used the full DDPM sampler with 1000 steps.
+For DDIM, we sampled from the same trained DDPM parameters, conditioning on class labels in the same manner as
+DDPM. We used 250 sampling steps with a linear index schedule on MNIST and an index schedule uniform in the ᾱ space
+on CIFAR10.
+For FM, we used the same class-conditional UNet backbone as in DDPM. Training used learning rate 10−4 and batch size
+64, for 30 epochs on MNIST and 200 epochs on CIFAR10, using time scale 1000. Sampling solved the associated ODE
+using the Euler method with 50 steps on MNIST and 200 steps on CIFAR10.
+We provide sample visualizations for MNIST and CIFAR10 in Figures 13 and 14, respectively.
+
+(c) GAN
+
+(a) Owner
+
+(b) Anchor
+
+(d) DDPM
+
+(e) DDIM
+
+(f) FM
+
+Figure 13. MNIST samples. For each generative model panel (c) to (f), the top five rows show samples generated from the model trained
+on the original dataset, and the bottom five rows show samples generated from the model trained on the Anchor augmented dataset.
+
+(c) GAN
+
+(a) Owner
+
+(b) Anchor
+
+(d) DDPM
+
+(e) DDIM
+
+(f) FM
+
+Figure 14. CIFAR10 samples. For each generative model panel (c) to (f), the top five rows show samples generated from the model trained
+on the original dataset, and the bottom five rows show samples generated from the model trained on the Anchor augmented dataset.
+
+28
+
+Priority-Aware Shapley Value
+
+E.3. Additional Results
+
+Anchor
+Mean Rank
+
+350
+
+Boosters
+
+Copier
+
+Poisoner
+
+0 1 2 3 4 5 6 7 8 9 10 11
+
+0 1 2 3 4 5 6 7 8 9 10 11
+
+0 1 2 3 4 5 6 7 8 9 10 11
+
+700
+600
+500
+400
+300
+
+300
+250
+200
+0 1 2 3 4 5 6 7 8 9 10 11
+
+log2 (b)
+
+Limiting Anchor
+
+log2 (b)
+Limiting Boosters
+
+log2 (b)
+Limiting Copier
+
+Limiting Poisoner
+
+log2 (b)
+
+Figure 15. Change of mean rank by limiting weight of each provider.
+Table 1. Provider-wise values on MNIST (mean (sd)).
+Provider
+
+SV
+
+WSV
+
+PSV
+
+PASV (b=2)
+
+PASV (b=8)
+
+PASV (b=32)
+
+Owner
+Anchor
+GAN
+DDPM
+DDIM
+FM
+Copier
+Poisoner
+
+0.0957 (0.0002)
+0.1148 (0.0004)
+0.1225 (0.0003)
+0.1144 (0.0003)
+0.1078 (0.0003)
+0.1506 (0.0004)
+0.0848 (0.0003)
+0.0175 (0.0003)
+
+0.5270 (0.0000)
+0.0468 (0.0002)
+0.0596 (0.0001)
+0.0507 (0.0002)
+0.0518 (0.0002)
+0.0825 (0.0003)
+0.0073 (0.0002)
+-0.0178 (0.0002)
+
+0.5270 (0.0000)
+0.0927 (0.0056)
+0.0483 (0.0028)
+0.0470 (0.0036)
+0.0330 (0.0034)
+0.0773 (0.0048)
+-0.0032 (0.0022)
+-0.0141 (0.0052)
+
+0.5270 (0.0000)
+0.0826 (0.0069)
+0.0513 (0.0027)
+0.0557 (0.0039)
+0.0283 (0.0045)
+0.0767 (0.0035)
+-0.0065 (0.0012)
+-0.0072 (0.0015)
+
+0.5270 (0.0000)
+0.0673 (0.0040)
+0.0512 (0.0021)
+0.0591 (0.0061)
+0.0281 (0.0079)
+0.0884 (0.0054)
+-0.0054 (0.0005)
+-0.0077 (0.0009)
+
+0.5270 (0.0000)
+0.0548 (0.0049)
+0.0562 (0.0021)
+0.0624 (0.0047)
+0.0263 (0.0032)
+0.0960 (0.0070)
+-0.0061 (0.0006)
+-0.0086 (0.0012)
+
+29
+
+SV
+0.2
+
+Marginal Contribution
+
+0.050
+0.025
+0.000
+
+PASV (b = 2)
+
+PSV
+
+PASV (b = 8)
+
+0.050
+0.025
+0.000
+
+PASV (b = 32)
+
+0.050
+0.025
+0.000
+
+0.050
+0.025
+0.000
+
+DDIM
+
+FM
+
+Ow
+An ner
+ch
+GAor
+DD N
+DDPM
+IM
+F
+Co M
+Po pier
+iso
+ne
+r
+
+DDPM
+
+Ow
+An ner
+ch
+GAor
+DD N
+DDPM
+IM
+F
+Co M
+p
+Po ier
+iso
+ne
+r
+
+GAN
+
+Ow
+An ner
+ch
+GAor
+DD N
+DDPM
+IM
+F
+Co M
+Po pier
+iso
+ne
+r
+
+Anchor
+
+Ow
+An ner
+ch
+GAor
+DD N
+DDPM
+IM
+F
+Co M
+Po pier
+iso
+ne
+r
+
+Owner
+
+0.0100
+0.0075
+0.0050
+0.0025
+
+Ow
+An ner
+ch
+GAor
+DD N
+DDPM
+IM
+F
+Co M
+p
+Po ier
+iso
+ne
+r
+
+0.0
+
+Copier
+
+Poisoner
+
+0.0025
+0.0000
+0.0025
+
+0 200 400 600 800
+
+s
+
+Provider-Wise Value
+
+WSV
+
+0.050
+0.025
+0.000
+
+0.4
+
+Ow
+An ner
+ch
+GAor
+DD N
+DDPM
+IM
+F
+Co M
+Po pier
+iso
+ne
+r
+
+Provider-Wise Value
+
+Priority-Aware Shapley Value
+
+0 200 400 600 800 0 200 400 600 800 0 200 400 600 800 0 200 400 600 800 0 200 400 600 800 0 200 400 600 800 0 200 400 600 800
+
+Limiting Anchor
+
+s
+
+s
+Limiting Boosters
+
+s
+
+s
+Limiting Copier
+
+s
+
+s
+
+Limiting Poisoner
+
+s
+
+0.05
+0.00
+0 1 2 3 4 5 6 7 8 9 10 11 0 1 2 3 4 5 6 7 8 9 10 11 0 1 2 3 4 5 6 7 8 9 10 11 0 1 2 3 4 5 6 7 8 9 10 11
+
+log2 (b)
+
+Anchor
+
+GAN
+
+log2 (b)
+DDPM
+
+DDIM
+
+FM
+
+log2 (b)
+Copier
+
+Poisoner
+
+log2 (b)
+
+Figure 16. CIFAR10 results. (Top) Provider-wise values. (Middle) Marginal contribution versus subset size. (Bottom) Sensitivity
+analysis.
+Table 2. Provider-wise values on CIFAR10 (mean (sd)).
+Provider
+
+SV
+
+WSV
+
+PSV
+
+PASV (b=2)
+
+PASV (b=8)
+
+PASV (b=32)
+
+Owner
+Anchor
+GAN
+DDPM
+DDIM
+FM
+Copier
+Poisoner
+
+0.0939 (0.0003)
+0.0866 (0.0003)
+0.0835 (0.0002)
+0.0977 (0.0004)
+0.0864 (0.0003)
+0.0910 (0.0003)
+0.0736 (0.0004)
+0.0324 (0.0002)
+
+0.5080 (0.0000)
+0.0186 (0.0001)
+0.0283 (0.0001)
+0.0330 (0.0001)
+0.0232 (0.0001)
+0.0306 (0.0001)
+-0.0002 (0.0001)
+0.0034 (0.0001)
+
+0.5080 (0.0000)
+0.0419 (0.0039)
+0.0256 (0.0040)
+0.0242 (0.0034)
+0.0238 (0.0030)
+0.0218 (0.0031)
+-0.0045 (0.0037)
+0.0043 (0.0014)
+
+0.5080 (0.0000)
+0.0324 (0.0040)
+0.0349 (0.0059)
+0.0294 (0.0029)
+0.0220 (0.0032)
+0.0241 (0.0047)
+-0.0066 (0.0020)
+0.0009 (0.0010)
+
+0.5080 (0.0000)
+0.0300 (0.0045)
+0.0358 (0.0033)
+0.0274 (0.0045)
+0.0204 (0.0030)
+0.0255 (0.0063)
+0.0002 (0.0009)
+-0.0022 (0.0004)
+
+0.5080 (0.0000)
+0.0235 (0.0040)
+0.0377 (0.0049)
+0.0349 (0.0041)
+0.0194 (0.0044)
+0.0229 (0.0032)
+0.0017 (0.0007)
+-0.0031 (0.0005)
+
+30
+
+Priority-Aware Shapley Value
+
+Algorithm 3 Utility evaluation with conditional kNN imputation.
+test
+train
+Input: training set Dtrain = {(x′i , yi′ )}ni=1
+; test set Dtest = {(xi , yi )}ni=1
+; trained predictor f ; subset S ⊆ [n]; number of
+neighbors k; number of evaluation points neval .
+b (S) ← 0
+Initialize U
+for t = 1 to neval do
+Sample (x, y) uniformly from Dtest
+train
+Find k nearest neighbors {x(1) , . . . , x(k) } of x among {x′i }ni=1
+restricted to coordinates in S
+Initialize u
+b←0
+for j = 1 to k do
+(j)
+Form composite input x
+e(j) ← xS ⊕ xS c
+(j)
+u
+b←u
+b + fy (e
+x )
+end for
+b (S) ← U
+b (S) + u
+U
+b/k
+end for
+b (S) ← U
+b (S)/neval
+U
+b (S)
+return U
+
+F. Experimental Details in Section 5.2
+F.1. On-Manifold Utility with Conditional k-NN Imputation
+Feature attribution evaluates how a fixed trained predictor changes as features are revealed, so we define the utility of a
+feature subset through a masking-based prediction score. Let fy (x) denote the predicted probability assigned to class y at
+input x.
+For a subset of feature indices S ⊆ [n] and a labeled test point (x, y), the utility is computed by keeping the observed
+coordinates xS fixed and imputing the remaining coordinates xS c from a conditional reference distribution rather than from
+the marginal (Janzing et al., 2020; Sundararajan & Najmi, 2020; Frye et al., 2021). This on-manifold construction is used to
+avoid implausible masked inputs that can arise under marginal imputation when features are dependent.
+Concretely, we approximate the conditional distribution of the unobserved coordinates given the observed ones, p(xS c |xS ),
+using k-NN sampling in the subspace restricted to coordinates in S. Given a test point (x, y) and S, let {x(1) , . . . , x(k) }
+denote the k nearest neighbors of x among training inputs when distances are computed using only the coordinates in S. For
+(j)
+each neighbor x(j) , we form a composite input xS ⊕ xS c , which keeps the coordinates in S from x and fills the remaining
+coordinates from x(j) . The per-point utility is defined as the conditional expectation
+
+
+uS (x, y) = Ex′Sc ∼p(x′Sc |xS ) fy (xS ⊕ x′S c ) ,
+and is estimated using the k-NN conditional sampler by
+k
+
+u
+bS (x, y) =
+
+1X
+(j)
+fy (xS ⊕ xS c ).
+k j=1
+
+Finally, following the global aggregation used in Shapley-based feature attribution, we define the subset utility as
+
+
+U (S) = E(x,y)∼p(x,y) uS (x, y) .
+In implementation, we estimate U (S) by Monte Carlo using neval test points (x(t) , y (t) ) sampled uniformly from the test
+split and the k-NN estimator u
+bS (x, y), i.e.,
+b (S) =
+U
+
+neval
+1 X
+
+neval t=1
+
+
+u
+bS x(t) , y (t) .
+
+Implementation details of the utility evaluation procedure are provided in Algorithm 3.
+31
+
+Priority-Aware Shapley Value
+
+F.2. Detailed Setup
+We provide further implementation details for the feature attribution experiments in Section 5.2. We used a fixed random
+seed for the train test split, and replicated value estimation across 10 independent random seeds. In the results, we report the
+mean and one standard deviation across these runs.
+The experimental setup largely followed Frye et al. (2020). The Census Income dataset was preprocessed by dropping samples with missing values, yielding 45,222 samples with 12 features (intentionally excluding fnlwgt and
+education-num), followed by a 75/25 train test split. All categorical features were encoded using one hot encoding, while continuous features were standardized to have zero mean and unit variance. An MLP classifier f was trained with
+ReLU activations and ℓ2 regularization with coefficient 10−4 . Optimization used Adam with (β1 , β2 ) = (0.9, 0.999) and
+learning rate 10−3 . Training ran for up to 200 epochs with batch size 128, using early stopping with a validation fraction of
+0.25 and a patience of 20 epochs. For the conditional sampler used to evaluate U (S), we set k = 100, neval = 1000 and
+used Euclidean distance. All values were estimated based on NMC = 3000 Monte-Carlo samples, and for the general DAG
+setting, linear extensions were sampled using Algorithm 1 with burn-in B = 10,000 and thinning τ = 1,000.
+F.3. DAG Construction for Census Income Dataset via LLM Consultation
+In this experiment, the detailed precedence DAG over the 12 Census Income features was obtained by starting from the
+coarse ordered-partition constraint of Frye et al. (2020) and consulting ChatGPT 5.2 Thinking only to propose candidate
+relations based on common sense and domain knowledge. Note that we are not making a causal claim providing this DAG,
+and the full conversation transcript is provided below for transparency.
+Prompt
+We consider the U.S. Census Income dataset for predicting whether annual income
+exceeds $50K. Features included in the dataset are as below:
+- age: age in years.
+- workclass: employment type (e.g., Private, Self-emp, Gov).
+- education: highest education level attained (categorical; e.g., Bachelors, HS-grad,
+etc.).
+- marital-status: marital status (e.g., Married-civ-spouse, Never-married, Divorced,
+etc.).
+- occupation: job category (e.g., Tech-support, Craft-repair, Exec-managerial, etc.).
+- relationship: household relationship/role (e.g., Husband, Wife, Own-child, Not-infamily, etc.).
+- race: self-identified race category.
+- sex: biological sex / gender as recorded (Male/Female).
+- capital-gain: capital gains (numeric).
+- capital-loss: capital losses (numeric).
+- hours-per-week: usual hours worked per week (numeric).
+- native-country: country of origin (categorical).
+We treat each input variable as a player in a cooperative game and use a DAG over
+features to encode precedence constraints for feature attribution. For constructing a
+DAG, A common approach in existing papers is to partition variables into two blocks:
+A (demographic): {age, race, sex, native-country}
+B (socioeconomic): {workclass, education, marital-status, occupation, relationship,
+capital-gain, capital-loss, hours-per-week}
+and assume a complete bipartite DAG A -> B (i.e., every variable in A has a directed
+edge into every variable in B), with no edges within A and no edges within B.
+Please evaluate whether the DAG specified above is reasonable. If it is, simply say: "
+The specified DAG is reasonable." and ignore everything below. If it is not, propose a
+more realistic DAG that better reflects plausible relationships among these variables.
+If you propose a new DAG, first provide a brief paragraph explaining your design
+principles for the DAG, and then provide the DAG as an edge list in the form (parent
+-> child).
+
+32
+
+Priority-Aware Shapley Value
+Response
+The specified bipartite DAG A -> B is not very realistic. While it’s sensible that
+demographic variables often precede many socioeconomic outcomes, the assumption of no
+edges within B is a major miss: there are strong, plausible precedence relations like
+education -> occupation/workclass, marital-status -> relationship, and occupation/
+workclass -> hours-per-week, etc. Treating all B variables as mutually "parallel" can
+distort attributions by forcing effects that plausibly flow through education/
+occupation to instead be credited directly to demographics.
+Design principles
+I’m aiming for a DAG that (1) respects temporal/structural precedence (stable
+attributes and early-life factors precede later labor-market outcomes), (2) captures
+the most obvious within-socioeconomic dependencies (especially education -> occupation
+/workclass and marital-status -> relationship), (3) stays sparse and defensible (only
+edges that are broadly plausible across the population), and (4) avoids dubious causal
+claims (e.g., race <-> native-country) by not forcing edges where directionality is
+unclear.
+Proposed DAG (edge list)
+(age -> education)
+(age -> marital-status)
+(age -> occupation)
+(age -> relationship)
+(age -> capital-gain)
+(age -> capital-loss)
+(sex -> education)
+(sex -> occupation)
+(sex -> workclass)
+(sex -> marital-status)
+(sex -> relationship)
+(race -> education)
+(race -> occupation)
+(race -> workclass)
+(native-country -> education)
+(native-country -> occupation)
+(native-country -> workclass)
+(education -> occupation)
+(occupation -> workclass)
+(occupation -> hours-per-week)
+(workclass -> hours-per-week)
+(education -> capital-gain)
+(education -> capital-loss)
+(occupation -> capital-gain)
+(occupation -> capital-loss)
+(marital-status -> relationship)
+This keeps the intuitive "demographics often precede socioeconomic outcomes" idea, but
+also encodes key intra-B precedence constraints that the complete bipartite A -> B
+structure cannot represent.
+
+33
+
+Priority-Aware Shapley Value
+Table 3. Average marginal contribution of capital-gain under different ordering with marital-status and capital-loss;
+The baseline sampling distribution (λ = 1) is used. Entries report mean (sd) across replications.
+
+Case of Ordering
+marital-status → capital-gain → capital-loss
+{marital-status, capital-loss} → capital-gain
+capital-gain → {marital-status, capital-loss}
+capital-loss → capital-gain → marital-status
+
+Proportion in Samples
+
+Marginal Contribution
+
+0.3873 (0.0087)
+0.4620 (0.0087)
+0.1134 (0.0062)
+0.0373 (0.0048)
+
+0.01663 (0.00000)
+0.01807 (0.00001)
+0.01835 (0.00002)
+0.02040 (0.00004)
+
+F.4. Additional Experiments
+F.4.1. S WEEP D IAGNOSTICS
+As shown in Figure 17 (and in the right panel of Figure 7), we notice that varying the priority weights to promote or delay
+a given feature does not necessarily induce a monotone change in its estimated value. Motivated by these non-monotone
+responses, we conduct a diagnostic analysis and focus on a representative case that exhibits a obvious U-shaped pattern
+under the sweep, capital-gain. First, based on the general DAG in Figure 6b, we can anticipate what happens in each
+limiting case. Clearly, since capital-gain is maximal in the full player set, in the λ → ∞ scenario it is placed at the
+very end of the linear extension with probability one. On the other hand, in the λ → 0+ case, capital-gain is promoted
+as much as possible until it becomes the unique element of the maximal set. In particular, in the perspective of the backward
+sampling scheme, {age, sex, native-country, race, education, occupation} (and only these) always appear
+before it, so under the limiting distribution capital-gain occupies seventh position with probability one (which is also
+consistent with the rank pattern in Figure 18). Meanwhile, we observed the following interesting relationship among the
+three players capital-gain, capital-loss, and marital-status:
+1. capital-gain attains a larger marginal contribution when capital-loss has already been included in the
+model.
+2. capital-gain attains a smaller marginal contribution when marital-status has already been included in the
+model.
+To support this, Table 3 partitions sampled linear extensions by the relative ordering among capital-gain,
+capital-loss, and marital-status, and reports the corresponding mean marginal contribution of
+capital-gain. The table shows a dependence among three features. When marital-status precedes
+capital-gain while capital-loss remains absent, the marginal contribution of capital-gain is the smallest,
+and this happens frequently. In contrast, when capital-loss precedes capital-gain and marital-status
+is still absent, capital-gain achieves the largest marginal contribution, although it occurs rarely. The mixed case,
+where capital-gain appears after both marital-status and capital-loss (as in λ → ∞) or before both (as
+in λ → 0+ ) yield intermediate marginal contributions. Noting that the weight average of the marginal contribution in Table
+3 is a value of capital-gain under λ = 1, this clarifies the U-shape behavior of the sweeping result. In summary,
+capital-loss acts as an amplifying context for capital-gain, whereas marital-status acts as a suppressing
+context, and the priority sweep modulates the value of capital-gain value primarily through shifting the frequencies of
+these contexts.
+
+34
+
+Priority-Aware Shapley Value
+
+Value
+
+age
+
+sex
+
+0.041
+0.040
+0.039
+
+Value
+
+0.0365
+
+0.034
+
+0.0360
+
+0.033
+
+native-country
+0.002
+0.001
+
+0.003
+
+0.016
+
+education
+
+0.000
+
+occupation
+
+0.0026
+
+0.008
+
+0.002
+4 0
+
+8
+
+log2 ( )
+
+0.0024
+
+capital-gain
+
+0.004
+
+4
+
+8
+
+capital-loss
+
+0.0185
+
+0.00425
+
+0.0180
+
+0.00400
+
+0.0175
+
+0.00375
+
+4 0
+
+8
+
+log2 ( )
+
+4
+
+8
+
+workclass
+
+0.0028
+
+0.009
+
+relationship
+Value
+
+0.004
+
+0.018
+
+marital-status
+
+race
+
+hours-per-week
+
+0.0080
+0.0075
+0.0070
+
+4 0
+
+8
+
+log2 ( )
+
+4
+
+8
+
+8
+
+4 0
+
+log2 ( )
+
+4
+
+8
+
+Value
+
+Figure 17. Change of feature value from priority sweep on the Census Income dataset.
+
+age
+
+0.041
+0.040
+0.039
+
+3
+
+marital-status
+
+0.0365
+
+0.002
+0.001
+
+0.034
+
+2
+
+3
+
+2
+
+education
+
+occupation
+
+0.000
+
+4
+
+6
+
+relationship
+
+8
+
+0.009
+5.0
+
+5.5
+
+capital-gain
+
+0.004
+
+0.0180
+
+0.002
+5
+
+Rank
+
+10
+
+0.0175
+
+8
+
+10
+
+Rank
+
+12
+
+0.00425
+0.00400
+0.00375
+
+workclass
+
+0.0024
+6.5
+
+capital-loss
+
+8
+
+10
+
+Rank
+
+7.0
+
+7
+
+12
+
+8
+
+9
+
+hours-per-week
+
+0.0080
+0.0075
+0.0070
+
+8
+
+Figure 18. Feature values as a function of the feature’s rank induced by priority sweep.
+
+35
+
+4
+
+0.0026
+6.0
+
+0.0185
+
+2
+
+0.0028
+
+0.008
+4
+
+Value
+
+1
+
+0.033
+
+0.0360
+
+native-country
+
+0.003
+
+0.016
+2
+
+race
+
+0.004
+
+0.018
+1
+
+Value
+
+sex
+
+10
+
+Rank
+
+12
+
+Priority-Aware Shapley Value
+
+F.4.2. S ENSITIVITY A NALYSIS
+The feature-attribution experiment in Section 5.2 already shows that the attribution vector changes when the coarse orderedpartition DAG is replaced by the more detailed DAG in Figure 6b. Here we study a finer robustness question: how sensitive
+are the resulting PASV scores to local misspecification of the detailed DAG? This question is important because a precedence
+DAG is a modeling input rather than an observed ground truth. At the same time, complete insensitivity to the DAG would
+not be desirable: if a structural change substantially alters which feature can precede another, then a precedence-aware
+attribution method should reflect that semantic change. Thus, the purpose of this experiment is to distinguish small structural
+perturbations that leave the attribution stable from larger perturbations that materially change the induced order distribution.
+We use the same Census Income feature-attribution setting as in Section 5.2. The base DAG is the general DAG in Figure 6b,
+which has 12 nodes and 26 edges, and we set λ ≡ 1. Only the DAG edges are perturbed; all other experimental configurations
+are kept fixed. Let ψ and ψ ′ denote the PASV vectors under the base and perturbed DAGs, respectively. For pairwise order
+probabilities, let
+Qij = P(i ≺π j)
+
+Q′ij = P′ (i ≺π j),
+
+and
+
+where the probabilities are estimated by Monte Carlo under the corresponding DAG.
+We use Relative Attribution Shift (RAS) as the primary measure of attribution change:
+
+RAS =
+
+∥ψ ′ − ψ∥2
+.
+∥ψ∥2
+
+(38)
+
+To interpret RAS, we also report four auxiliary quantities: the Pearson correlation between ψ and ψ ′ , the top-4 overlap
+between the four highest-valued features under the two vectors, the order-distribution change
+
+∆ord =
+
+X
+1
+|Q′ij − Qij |,
+n(n − 1)
+
+(39)
+
+i̸=j
+
+and the fraction of node pairs whose deterministic relation changes. For the latter, let r⪯ (i, j) ∈ {i ⪯ j, j ⪯ i, i ∥ j}
+denote the relation type of the unordered pair {i, j} under the DAG. We report
+
+∆rel =
+
+2
+n(n − 1)
+
+1{r⪯′ (i, j) ̸= r⪯ (i, j)}.
+
+X
+
+(40)
+
+1≤i<j≤n
+
+We consider four perturbation scenarios. First, we delete a single effective edge, considering the 12 deletions corresponding
+to the transitive reduction. Second, we add a single edge, using 20 randomly sampled valid additions among currently
+incomparable pairs that preserve acyclicity. Third, we delete minimum edge cuts that disconnect the DAG into two equal
+components, yielding 6 cases. Fourth, we rank the 12 effective single-edge deletions by their RAS, and for K ∈ {3, 4, 5}
+either delete the top-K most influential edges or keep only those top-K edges while deleting the others. The effective
+deleted edges and sampled valid additions used in the single-edge panels are listed below.
+Effective deletions
+
+Effective deletions
+
+marital-status→relationship
+education→occupation
+age→marital-status
+sex→marital-status
+age→education
+occupation→workclass
+
+workclass→hours-per-week
+sex→education
+occupation→capital-loss
+native-country→education
+occupation→capital-gain
+race→education
+
+36
+
+Priority-Aware Shapley Value
+Valid additions
+
+Valid additions
+
+relationship→education
+relationship→occupation
+marital-status→race
+marital-status→native-country
+sex→age
+hours-per-week→marital-status
+race→sex
+relationship→workclass
+native-country→age
+marital-status→occupation
+
+relationship→capital-gain
+capital-loss→capital-gain
+relationship→hours-per-week
+age→race
+marital-status→capital-gain
+workclass→capital-loss
+workclass→capital-gain
+capital-gain→hours-per-week
+marital-status→hours-per-week
+race→relationship
+
+Figure 19 shows that PASV is stable to minor perturbations but sensitive to structural changes that substantially modify
+the admissible order distribution. Many single non-critical edge additions or deletions leave the attribution vector nearly
+unchanged, with RAS below 0.05 and Pearson correlation above 0.97. In contrast, disconnecting the DAG or removing
+critical edges produces larger shifts. The figure also shows that RAS is closely tied to changes in the pairwise order
+probabilities. This supports the intended interpretation of PASV under DAG uncertainty: robustness is expected when
+a perturbation has little effect on the order distribution, whereas a semantically consequential change in the precedence
+structure should be visible in the attribution.
+
+37
+
+Priority-Aware Shapley Value
+
+0.0
+
+0.1
+
+0.2
+
+RAS
+
+Pearson Correlation
+
+1.0
+
+Pearson Correlation
+
+Deletion
+
+RAS
+marital status relationship
+education occupation
+age marital status
+sex marital status
+age education
+occupation workclass
+race education
+workclass hours per week
+sex education
+occupation capital loss
+native country education
+occupation capital gain
+
+0.3
+
+0.9
+0.8
+0.7
+0.6
+0.5 0.0
+
+0.4
+
+0.1
+
+0.2
+
+RAS
+
+0.3
+
+0.4
+
+0.0
+
+Change
+
+Addition
+
+Order Distribution Change
+relationship education
+relationship occupation
+marital status race
+marital status native country
+sex age
+hours per week marital status
+race sex
+relationship workclass
+native country age
+marital status occupation
+relationship capital gain
+capital loss capital gain
+relationship hours per week
+age race
+marital status capital gain
+workclass capital loss
+workclass capital gain
+capital gain hours per week
+marital status hours per week
+race relationship
+
+0.1
+
+0.2
+
+RAS
+
+0.3
+
+0.4
+
+# of Overlap
+
+Disconnection
+
+Case 2
+Case 3
+Case 4
+Case 5
+Case 6
+0.1
+
+0.2
+
+RAS
+
+0.3
+
+0.1
+
+0.2
+
+RAS
+
+0.3
+
+0.4
+
+Top-4 Valuable Nodes Overlap
+
+3
+2
+1
+
+0.4
+
+0.0
+
+0.1
+
+0.2
+
+RAS
+
+0.3
+
+0.4
+
+Relation Change
+Delete Top-3
+
+0.5
+
+Delete Top-4
+
+0.4
+
+Delete Top-5
+
+Change
+
+Top-K influential from Deletion
+
+0.0
+
+4
+
+Case 1
+
+0.0
+
+0.30
+0.25
+0.20
+0.15
+0.10
+0.05
+0.00
+
+Keep Only Top-3
+Keep Only Top-4
+
+Deletion
+
+Addition
+
+0.2
+0.1
+
+Keep Only Top-5
+0.0
+
+0.3
+
+0.1
+
+0.2
+
+RAS
+
+0.3
+
+Disconnection
+
+0.4
+
+0.0
+
+0.0
+
+Delete Top-k influential
+
+0.1
+
+0.2
+
+RAS
+
+0.3
+
+0.4
+
+Keep Only Top-k influential
+
+Figure 19. Sensitivity analysis under DAG misspecification in the Census Income feature-attribution experiment. The base DAG is
+Figure 6b with λ ≡ 1. Rows correspond to single-edge deletion, single-edge addition, DAG disconnection, and deleting or keeping only
+the top-K influential edges. The left column reports RAS for each perturbation, and the remaining columns plot stability metrics against
+RAS.
+
+38
+
+

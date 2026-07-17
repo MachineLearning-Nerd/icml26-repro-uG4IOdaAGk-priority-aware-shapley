@@ -1,0 +1,31 @@
+{
+  "paper": "Priority-Aware Shapley Value (Das & Srivastava 2602.09326, uG4IOdaAGk)",
+  "claims": {
+    "C1_definition": {
+      "claim": "C1 PASV = precedence + soft weights",
+      "all_enforce_precedence": true,
+      "all_weights_active": true
+    },
+    "C2_reductions_axioms": {
+      "claim": "C2 reductions + axioms",
+      "worst_Prop3.1_PSV": 0.0,
+      "worst_Prop3.2_WSV": 0.0,
+      "worst_efficiency": 1.7763568394002505e-15,
+      "worst_linearity": 1.7763568394002505e-15,
+      "worst_null_player": 0.0,
+      "classical_SV_reduction_err": 0.0,
+      "all_machine_precision": true
+    },
+    "C3_mcmc": {
+      "claim": "C3 MCMC sampler",
+      "worst_tv_to_stationary": 0.017108241758241733,
+      "worst_value_err": 1.3322676295501878e-15,
+      "converges": true
+    }
+  },
+  "verdict": {
+    "C1_verified": true,
+    "C2_verified": true,
+    "C3_verified": true
+  }
+}
