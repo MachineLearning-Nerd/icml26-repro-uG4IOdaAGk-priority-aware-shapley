@@ -13,7 +13,7 @@ exit 0 · 3.0s
 
 
 ````python title=run_claims.py
-"""Evidence orchestrator: Priority-Aware Shapley Value (Das & Srivastava,
+"""Evidence orchestrator: Priority-Aware Shapley Value (Lee et al.,
 arXiv 2602.09326, uG4IOdaAGk). Verifies the claims and writes outputs/."""
 import os, sys, csv, json
 sys.path.insert(0, os.path.dirname(__file__))
@@ -147,7 +147,7 @@ def main():
     print("=== C2 ==="); r2 = claim2_reductions_and_axioms(); print(json.dumps(r2, indent=2, default=lambda o: bool(o) if isinstance(o,np.bool_) else float(o)))
     print("=== C3 ==="); r3 = claim3_mcmc(); print(json.dumps(r3, indent=2, default=lambda o: bool(o) if isinstance(o,np.bool_) else float(o)))
     overall = {
-        "paper": "Priority-Aware Shapley Value (Das & Srivastava 2602.09326, uG4IOdaAGk)",
+        "paper": "Priority-Aware Shapley Value (Lee et al. 2602.09326, uG4IOdaAGk)",
         "claims": {"C1_definition": r1, "C2_reductions_axioms": r2, "C3_mcmc": r3},
         "verdict": {"C1_verified": r1["all_enforce_precedence"] and r1["all_weights_active"],
                     "C2_verified": r2["all_machine_precision"],
@@ -201,7 +201,7 @@ Wrote c1_definition.csv, c2_reductions_axioms.csv, c3_mcmc.csv, summary.json
 -->
 **📦 Artifact** `outputs/c2_reductions_axioms.csv` · dataset · 373 B
 
-trackio-local-path://outputs/c2_reductions_axioms.csv
+https://huggingface.co/buckets/DineshAI/uG4IOdaAGk-artifacts#logbook-files/outputs/c2_reductions_axioms.csv
 
 
 ---
@@ -210,7 +210,7 @@ trackio-local-path://outputs/c2_reductions_axioms.csv
 -->
 **📦 Artifact** `outputs/c1_definition.csv` · dataset · 318 B
 
-trackio-local-path://outputs/c1_definition.csv
+https://huggingface.co/buckets/DineshAI/uG4IOdaAGk-artifacts#logbook-files/outputs/c1_definition.csv
 
 
 ---
@@ -219,7 +219,7 @@ trackio-local-path://outputs/c1_definition.csv
 -->
 **📦 Artifact** `outputs/c3_mcmc.csv` · dataset · 316 B
 
-trackio-local-path://outputs/c3_mcmc.csv
+https://huggingface.co/buckets/DineshAI/uG4IOdaAGk-artifacts#logbook-files/outputs/c3_mcmc.csv
 
 
 ---

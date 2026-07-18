@@ -1,4 +1,4 @@
-"""Evidence orchestrator: Priority-Aware Shapley Value (Das & Srivastava,
+"""Evidence orchestrator: Priority-Aware Shapley Value (Lee et al.,
 arXiv 2602.09326, uG4IOdaAGk). Verifies the claims and writes outputs/."""
 import os, sys, csv, json
 sys.path.insert(0, os.path.dirname(__file__))
@@ -47,7 +47,7 @@ def claim1_definition():
                      # (a total chain has a unique linear extension)
                      "weights_active": (tv_change > 0) or len(d) == 1})
     with open(os.path.join(OUT, "c1_definition.csv"), "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys())); w.writeheader(); w.writerows(rows)
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()), lineterminator="\n"); w.writeheader(); w.writerows(rows)
     return {"claim": "C1 PASV = precedence + soft weights",
             "all_enforce_precedence": all(r["precedence_enforced"] for r in rows),
             "all_weights_active": all(r["weights_active"] for r in rows)}
@@ -92,7 +92,7 @@ def claim2_reductions_and_axioms():
     sv_red = float(np.max(np.abs(pasv_value(empty, np.ones(4), U4) - classical_shapley(U4, 4))))
     rows.append({"poset": "(empty)", "test": "const-λ no-precedence==classical SV", "err": sv_red})
     with open(os.path.join(OUT, "c2_reductions_axioms.csv"), "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys())); w.writeheader(); w.writerows(rows)
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()), lineterminator="\n"); w.writeheader(); w.writerows(rows)
     return {"claim": "C2 reductions + axioms",
             "worst_Prop3.1_PSV": worst_psv, "worst_Prop3.2_WSV": worst_wsv,
             "worst_efficiency": worst_eff, "worst_linearity": worst_lin,
@@ -121,7 +121,7 @@ def claim3_mcmc():
         rows.append({"poset": name, "tv_to_stationary": tv, "value_Linf_err": val_err,
                      "n_samples": len(samples)})
     with open(os.path.join(OUT, "c3_mcmc.csv"), "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys())); w.writeheader(); w.writerows(rows)
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()), lineterminator="\n"); w.writeheader(); w.writerows(rows)
     return {"claim": "C3 MCMC sampler",
             "worst_tv_to_stationary": worst_kl, "worst_value_err": worst_val,
             "converges": worst_kl < 0.05 and worst_val < 0.2}
@@ -132,7 +132,7 @@ def main():
     print("=== C2 ==="); r2 = claim2_reductions_and_axioms(); print(json.dumps(r2, indent=2, default=lambda o: bool(o) if isinstance(o,np.bool_) else float(o)))
     print("=== C3 ==="); r3 = claim3_mcmc(); print(json.dumps(r3, indent=2, default=lambda o: bool(o) if isinstance(o,np.bool_) else float(o)))
     overall = {
-        "paper": "Priority-Aware Shapley Value (Das & Srivastava 2602.09326, uG4IOdaAGk)",
+        "paper": "Priority-Aware Shapley Value (Lee et al. 2602.09326, uG4IOdaAGk)",
         "claims": {"C1_definition": r1, "C2_reductions_axioms": r2, "C3_mcmc": r3},
         "verdict": {"C1_verified": r1["all_enforce_precedence"] and r1["all_weights_active"],
                     "C2_verified": r2["all_machine_precision"],

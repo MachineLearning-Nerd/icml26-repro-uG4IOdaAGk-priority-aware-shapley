@@ -1,5 +1,5 @@
 {
-  "paper": "Priority-Aware Shapley Value (Das & Srivastava 2602.09326, uG4IOdaAGk)",
+  "paper": "Priority-Aware Shapley Value (Lee et al. 2602.09326, uG4IOdaAGk)",
   "claims": {
     "C1_definition": {
       "claim": "C1 PASV = precedence + soft weights",
@@ -18,7 +18,7 @@
     },
     "C3_mcmc": {
       "claim": "C3 MCMC sampler",
-      "worst_tv_to_stationary": 0.017108241758241733,
+      "worst_tv_to_stationary": 0.01638159340659339,
       "worst_value_err": 1.3322676295501878e-15,
       "converges": true
     }

@@ -1,5 +1,5 @@
 """Priority-Aware Shapley Value (PASV) and its predecessors, from
-"Priority-Aware Shapley Value" (Das & Srivastava, arXiv 2602.09326, uG4IOdaAGk).
+"Priority-Aware Shapley Value" (Lee et al., arXiv 2602.09326, uG4IOdaAGk).
 
 A poset ([n], ≺) encodes hard precedence (i ≺ j => i before j in any order).
 A linear extension (LE) π is a permutation respecting ≺; Π_≺ is their set.

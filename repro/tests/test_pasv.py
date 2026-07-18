@@ -1,12 +1,16 @@
-"""Formal pytest suite: Priority-Aware Shapley Value (Das & Srivastava 2602.09326).
+"""Formal pytest suite: Priority-Aware Shapley Value (Lee et al. 2602.09326).
 Run: pytest -q repro/tests"""
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import numpy as np
 import pytest
-from pasv import (Poset, pasv_distribution, psv_distribution, pasv_value,
+from pasv import (Poset, pasv_distribution, pasv_weight, psv_distribution, pasv_value,
                   psv_value, classical_shapley, wsv_backward_sample_weight)
 from mcmc import pasv_mcmc, empirical_distribution, mcmc_value_estimate
+from scalable_mcmc import (
+    BatchedOrderedPartitionChain, LocalPASVChain, kahn_linear_extension,
+    max_indegree_poset, ordered_blocks,
+)
 
 POSETS = [
     ("chain", Poset(4, {(0, 1), (1, 2), (2, 3)}), None),
@@ -95,3 +99,58 @@ def test_negative_nonuniform_not_psv():
     d = pasv_distribution(P, np.array([1.0, 5.0, 1.0, 1.0]))
     psv = psv_distribution(P)
     assert max(abs(d[p] - psv[p]) for p in psv) > 0.01
+
+
+# -- C3 scalability repair ---------------------------------------------------
+def test_c3_kahn_initialization_at_non_enumerable_scale():
+    P = max_indegree_poset(2048, maximum=4, seed=3)
+    extension = kahn_linear_extension(P)
+    assert len(extension) == 2048
+    assert P.is_le(extension)
+
+
+def test_c3_local_ratio_and_prefix_state_match_full_target():
+    P = Poset(7, {(0, 3), (1, 3), (1, 4), (2, 4), (3, 5), (4, 6)})
+    lam = np.array([1., 3., 7., 2., 5., 11., 13.])
+    chain = LocalPASVChain(P, lam, seed=17)
+    for _ in range(500):
+        k = int(chain.rng.integers(0, P.n - 1))
+        ratio = chain.swap_ratio(k)
+        if ratio is not None:
+            current = tuple(int(x) for x in chain.perm)
+            swapped = list(current)
+            swapped[k], swapped[k + 1] = swapped[k + 1], swapped[k]
+            assert ratio == pytest.approx(
+                pasv_weight(P, tuple(swapped), lam) / pasv_weight(P, current, lam),
+                rel=1e-12,
+            )
+        chain.step_at(k, float(chain.rng.random()))
+        assert chain.validate_prefix_stats() < 1e-12
+
+
+def test_c3_batched_sweeps_preserve_blocks_and_prefix_statistics():
+    blocks = ordered_blocks(128)
+    lam = np.linspace(1.0, 100.0, 128)
+    chain = BatchedOrderedPartitionChain(blocks, lam, seed=19)
+    for _ in range(1000):
+        chain.sweep()
+    for row, original in enumerate(blocks):
+        assert set(chain.matrix[row]) == set(original)
+    expected = np.zeros_like(chain.prefix_weight)
+    expected[:, 1:] = np.cumsum(lam[chain.matrix], axis=1)
+    assert np.max(np.abs(chain.prefix_weight - expected)) < 1e-10
+    assert chain.stats.proposals == 1000 * len(blocks)
+
+
+def test_c3_batched_last_player_matches_closed_form_wsv():
+    blocks = ordered_blocks(6, block_size=3)
+    lam = np.array([1., 2., 5., 3., 7., 11.])
+    chain = BatchedOrderedPartitionChain(blocks, lam, seed=23)
+    chain.run_sweeps(2000)
+    counts = np.zeros(6)
+    samples = 30000
+    for _ in range(samples):
+        chain.run_sweeps(3)
+        counts[chain.matrix[:, -1]] += 1
+    for block in blocks:
+        assert np.max(np.abs(counts[block] / samples - lam[block] / lam[block].sum())) < 0.025

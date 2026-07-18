@@ -1,5 +1,5 @@
 """Adjacent-swap Metropolis-Hastings sampler for the PASV distribution
-(Section 4 of Das & Srivastava 2602.09326) — Claim C3.
+(Section 4 of Lee et al. 2602.09326) — Claim C3.
 
 The state space is the set of linear extensions Π_≺.  From a current LE π we
 propose swapping two ADJACENT positions (t, t+1); the swap is feasible iff it
@@ -10,39 +10,16 @@ exactly p^(≺,λ).  We verify that the empirical distribution converges to p an
 that the resulting value estimate converges to ψ^PASV.
 """
 from __future__ import annotations
-from typing import Dict, Tuple, List
 import numpy as np
-from pasv import Poset, pasv_weight, random_order_value, Utility
-
-
-def _is_le_after_swap(poset: Poset, perm, t):
-    """Is swapping positions t,t+1 still a linear extension? Only the adjacency
-    π_t ≺ π_{t+1} can be violated by an adjacent swap."""
-    a, b = perm[t], perm[t + 1]
-    return b not in poset.succ[a]   # not (a ≺ b)
+from pasv import Poset, Utility
+from scalable_mcmc import LocalPASVChain
 
 
 def pasv_mcmc(poset: Poset, lam: np.ndarray, n_samples: int, burn_in: int = 1000,
-              seed: int = 0):
-    """Return a list of sampled linear extensions (thin=1 after burn-in)."""
-    rng = np.random.default_rng(seed)
-    perm = list(next(iter(poset.linear_extensions())))   # any LE to start
-    w = pasv_weight(poset, tuple(perm), lam)
-    n = poset.n
-    samples: List[Tuple[int, ...]] = []
-    total = burn_in + n_samples
-    for step in range(total):
-        t = rng.integers(0, n - 1)
-        if _is_le_after_swap(poset, perm, t):
-            perm[t], perm[t + 1] = perm[t + 1], perm[t]
-            w_new = pasv_weight(poset, tuple(perm), lam)
-            if rng.random() < w_new / w:
-                w = w_new
-            else:
-                perm[t], perm[t + 1] = perm[t + 1], perm[t]   # reject -> revert
-        if step >= burn_in:
-            samples.append(tuple(perm))
-    return samples
+              seed: int = 0, thinning: int = 1):
+    """Return PASV samples using Kahn init and the O(local) Lemma-4.1 ratio."""
+    chain = LocalPASVChain(poset, lam, seed=seed)
+    return list(chain.sample(n_samples=n_samples, burn_in=burn_in, thinning=thinning))
 
 
 def empirical_distribution(samples, poset):
