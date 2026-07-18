@@ -1,7 +1,7 @@
 # STATUS — Priority-Aware Shapley Value (`uG4IOdaAGk`)
 
-**Session:** perfect-score campaign. **Last updated:** 2026-07-18. **State:** C3
-paper-scale repair published; under official re-verdict.
+**Session:** perfect-score campaign. **Last updated:** 2026-07-18. **State:**
+complete — official high-quality perfect score 6/6.
 
 GitHub: `MachineLearning-Nerd/icml26-repro-uG4IOdaAGk-priority-aware-shapley`
 at public implementation SHA `672a7e0`.
@@ -26,5 +26,6 @@ HF Space: `DineshAI/uG4IOdaAGk` at public SHA `9f9dfe2`.
   bucket; conclusion updated and pinned.
 
 ## Next
-- Poll the official verdict dataset for Space SHA `9f9dfe2`; require C3
-  `verified` and paper score 6/6 before closing this repair.
+- None for this paper. Official verdict at `2026-07-18T09:50:25Z` judged exact
+  Space SHA `9f9dfe2`: C1/C2/C3 all `verified`, quality `high`, score 6/6.
+- Campaign aggregate after readback: DineshAI 194/216 across 40 judged logbooks.
