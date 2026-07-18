@@ -1,11 +1,11 @@
 # STATUS — Priority-Aware Shapley Value (`uG4IOdaAGk`)
 
 **Session:** perfect-score campaign. **Last updated:** 2026-07-18. **State:** C3
-paper-scale repair passed locally; publication and official re-verdict in progress.
+paper-scale repair published; under official re-verdict.
 
 GitHub: `MachineLearning-Nerd/icml26-repro-uG4IOdaAGk-priority-aware-shapley`
-(previous public SHA `1ade40f`; repair SHA pending push).
-HF Space: `DineshAI/uG4IOdaAGk` (repair SHA pending publish).
+at public implementation SHA `672a7e0`.
+HF Space: `DineshAI/uG4IOdaAGk` at public SHA `9f9dfe2`.
 
 ## Source
 - arXiv 2602.09326 (Lee, Liu, Tang & Zhang). Clean-room from v2 PDF/source.
@@ -26,5 +26,5 @@ HF Space: `DineshAI/uG4IOdaAGk` (repair SHA pending publish).
   bucket; conclusion updated and pinned.
 
 ## Next
-- Complete publish gate, push GitHub repair commit, upload rendered Space.
-- Verify public SHA/tags/artifact readback and wait for official C3 re-verdict.
+- Poll the official verdict dataset for Space SHA `9f9dfe2`; require C3
+  `verified` and paper score 6/6 before closing this repair.
