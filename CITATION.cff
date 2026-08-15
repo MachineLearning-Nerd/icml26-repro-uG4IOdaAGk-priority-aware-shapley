@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this audit, please cite Priority-Aware Shapley Value and identify the reproduction repository."
+title: "icml26-priority-aware-shapley: Independent reproduction and evidence audit"
+type: software
+version: "0.1.0"
+repository-code: "https://github.com/MachineLearning-Nerd/icml26-priority-aware-shapley"
+url: "https://github.com/MachineLearning-Nerd/icml26-priority-aware-shapley"
+authors:
+  - name: MachineLearning-Nerd
+preferred-citation:
+  type: article
+  title: "Priority-Aware Shapley Value"
+  authors:
+    - given-names: Kiljae
+      family-names: Lee
+    - given-names: Ziqi
+      family-names: Liu
+    - given-names: Weijing
+      family-names: Tang
+    - given-names: Yuan
+      family-names: Zhang
+  year: 2026
+  journal: "arXiv preprint arXiv:2602.09326"
+  doi: "10.48550/arXiv.2602.09326"
+  url: "https://arxiv.org/abs/2602.09326"
